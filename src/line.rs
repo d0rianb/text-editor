@@ -8,12 +8,16 @@ use speedy2d::Graphics2D;
 
 use crate::font::Font;
 
-const INITIAL_LINE_CAPACITY: usize = 2048;
+const INITIAL_LINE_CAPACITY: usize = 1024;
 
+
+#[derive(Derivative)]
+#[derivative(Debug, Clone)]
 pub(crate) struct Line {
     pub buffer: Vec<String>,
     pub font: Rc<RefCell<Font>>,
     pub wrap_y: u32,
+    #[derivative(Debug = "ignore")]
     pub formatted_text_block: Rc<FormattedTextBlock>,
     previous_string: String,
 }
@@ -26,7 +30,13 @@ impl Line {
             previous_string: String::new(),
             formatted_text_block,
             font,
-            wrap_y: 0
+            wrap_y: 0,
+        }
+    }
+
+    pub fn add_text(&mut self, text: &str) {
+        for c in text.chars() {
+            self.buffer.push(c.to_string());
         }
     }
 
@@ -41,5 +51,4 @@ impl Line {
     pub fn render(&self, x: f32, y: f32, graphics: &mut Graphics2D) {
         graphics.draw_text(Vector2::new(x, y), Color::BLACK, &self.formatted_text_block);
     }
-
 }

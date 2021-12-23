@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::cmp;
 use std::rc::Rc;
 
 use speedy2d::color::Color;
@@ -9,7 +8,7 @@ use speedy2d::Graphics2D;
 use speedy2d::window::UserEventSender;
 
 use crate::animation::{Animation, EasingFunction};
-use crate::AnimationEvent;
+use crate::EditorEvent;
 use crate::font::Font;
 
 const CURSOR_WIDTH: f32 = 3.0;
@@ -29,7 +28,7 @@ pub(crate) struct Cursor {
     pub font: Rc<RefCell<Font>>,
     pub animation: Vector2<Option<Animation>>,
     cursor_type: CursorType,
-    animation_event_sender: Option<UserEventSender<AnimationEvent>>,
+    event_sender: Option<UserEventSender<EditorEvent>>,
 }
 
 impl Cursor {
@@ -40,12 +39,12 @@ impl Cursor {
             font,
             cursor_type: CursorType::Carret,
             animation: Vector2 { x: Option::None, y: Option::None },
-            animation_event_sender: Option::None,
+            event_sender: Option::None,
         }
     }
 
-    pub fn set_animation_event_sender(&mut self, aes: Option<UserEventSender<AnimationEvent>>) {
-        self.animation_event_sender = aes;
+    pub fn set_animation_event_sender(&mut self, aes: Option<UserEventSender<EditorEvent>>) {
+        self.event_sender = aes;
     }
 
     pub fn move_to(&mut self, x: u32, y: u32) {
@@ -74,10 +73,10 @@ impl Cursor {
     fn transition(&mut self, x: u32, y: u32) {
         let start_x = if let Some(animation_x) = &self.animation.x { animation_x.value } else { self.computed_x() };
         let start_y = if let Some(animation_y) = &self.animation.y { animation_y.value } else { self.computed_y() };
-        let duration = 2000.;
-        let aes = self.animation_event_sender.clone();
-        let new_animation_x = Animation::new(start_x, x as f32 * self.font.borrow().char_width, duration, EasingFunction::SmootherStep, aes.clone());
-        let new_animation_y = Animation::new(start_y, y as f32 * self.font.borrow().char_height, duration, EasingFunction::SmootherStep, aes);
+        let duration = 100.;
+        let es = self.event_sender.clone();
+        let new_animation_x = Animation::new(start_x, x as f32 * self.font.borrow().char_width, duration, EasingFunction::SmootherStep, es.clone());
+        let new_animation_y = Animation::new(start_y, y as f32 * self.font.borrow().char_height, duration, EasingFunction::SmootherStep, es);
         self.animation.x = Some(new_animation_x);
         self.animation.y = Some(new_animation_y);
     }

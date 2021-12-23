@@ -1338,7 +1338,9 @@ dependencies = [
 name = "text-editor"
 version = "0.1.0"
 dependencies = [
+ "derivative",
  "speedy2d",
+ "unicode-normalization",
 ]
 
 [[package]]
