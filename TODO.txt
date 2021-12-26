@@ -1,0 +1,5 @@
+ - multiple windows
+ - multiple cursors
+ - formating (bold, italic, underline)
+ - improve load/save (choose filepath)
+ - menubar
