@@ -6,6 +6,7 @@ mod cursor;
 mod editor;
 mod font;
 mod line;
+mod range;
 
 use std::thread;
 use std::env;
@@ -28,7 +29,9 @@ struct EditorWindowHandler {
     editor: Editor,
     last_editor_size: Vector2<u32>,
     tick_timestamp: Instant,
-    modifiers : ModifiersState
+    modifiers : ModifiersState,
+    mouse_button_pressed: (bool, bool), // (Left, Right)
+    mouse_position: Vector2<f32>,
 }
 
 impl WindowHandler<EditorEvent> for EditorWindowHandler {
@@ -68,8 +71,35 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         self.editor.render(graphics);
     }
 
-    fn on_mouse_button_down(&mut self, helper: &mut WindowHelper<EditorEvent>, _button: MouseButton) {
+    fn on_mouse_move(&mut self, helper: &mut WindowHelper<EditorEvent>, position: Vector2<f32>) {
+        self.mouse_position = position.clone();
+        if self.mouse_button_pressed.0 {
+            self.editor.update_selection(position);
+            helper.request_redraw();
+        }
+    }
+
+    fn on_mouse_button_down(&mut self, helper: &mut WindowHelper<EditorEvent>, button: MouseButton) {
+        match button {
+            MouseButton::Left => {
+                self.mouse_button_pressed.0 = true;
+                let index_position = self.editor.get_mouse_position_index(self.mouse_position);
+                self.editor.selection.reset();
+                self.editor.move_cursor(Vector2::new(index_position.x, index_position.y));
+                self.editor.begin_selection();
+            },
+            MouseButton::Right => self.mouse_button_pressed.1 = true,
+            _ => ()
+        }
         helper.request_redraw();
+    }
+
+    fn on_mouse_button_up(&mut self, _helper: &mut WindowHelper<EditorEvent>, button: MouseButton) {
+        match button {
+            MouseButton::Left => self.mouse_button_pressed.0 = false,
+            MouseButton::Right => self.mouse_button_pressed.1 = false,
+            _ => ()
+        }
     }
 
     fn on_key_down(&mut self, helper: &mut WindowHelper<EditorEvent>, virtual_key_code: Option<VirtualKeyCode>, _scancode: KeyScancode) {
@@ -98,6 +128,8 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         self.editor.update_text_layout();
     }
 
+
+
     fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) {
         self.modifiers = state;
     }
@@ -122,5 +154,7 @@ fn main() {
         modifiers: ModifiersState::default(),
         last_editor_size: (1200, 800).into(),
         tick_timestamp: Instant::now(),
+        mouse_button_pressed: (false, false),
+        mouse_position: Vector2::new(0., 0.),
     });
 }

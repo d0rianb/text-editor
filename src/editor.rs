@@ -12,6 +12,7 @@ use crate::cursor::Cursor;
 use crate::EditorEvent;
 use crate::font::Font;
 use crate::line::Line;
+use crate::range::Range;
 
 const EDITOR_PADDING: f32 = 5.;
 
@@ -24,7 +25,8 @@ pub(crate) struct Editor {
     pub cursor: Cursor,
     pub font: Rc<RefCell<Font>>,
     filepath: Option<String>,
-    pub event_sender: Option<UserEventSender<EditorEvent>>
+    pub event_sender: Option<UserEventSender<EditorEvent>>,
+    pub selection: Range,
 }
 
 impl Editor {
@@ -40,10 +42,25 @@ impl Editor {
             font,
             filepath: Option::None,
             event_sender:Option::None,
+            selection: Range::default()
         }
     }
 
     pub fn on_resize(&mut self, size: Vector2<u32>) { self.font.borrow_mut().on_resize(size) }
+
+    fn get_valid_cursor_position(&mut self, position: Vector2<u32>) -> Vector2<u32> {
+        let max_y = self.lines.len() as u32 - 1;
+        let y = cmp::min(position.y, max_y);
+        let line_length = self.lines[y as usize].buffer.len() as u32;
+        let x =  cmp::min(position.x, line_length);
+        Vector2::new(x, y)
+    }
+
+    pub fn move_cursor(&mut self, position: Vector2<u32>) {
+        assert!(self.lines.len() > 0);
+        let pos = self.get_valid_cursor_position(position);
+        self.cursor.move_to(pos.x, pos.y);
+    }
 
     pub fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
         let max_y = self.lines.len() as u32 - 1;
@@ -52,18 +69,12 @@ impl Editor {
 
         if new_x < 0 {
             // Go to line before
-            if self.cursor.y == 0 {
-                return;
-            }
-            let previous_line_buffer_size =
-                self.lines[self.cursor.y as usize - 1].buffer.len() as u32;
-            self.cursor
-                .move_to(previous_line_buffer_size, self.cursor.y - 1);
+            if self.cursor.y == 0 { return; }
+            let previous_line_buffer_size = self.lines[self.cursor.y as usize - 1].buffer.len() as u32;
+            self.cursor.move_to(previous_line_buffer_size, self.cursor.y - 1);
         } else if new_x as usize > self.get_current_buffer().len() {
             // Go to line after
-            if self.cursor.y as usize >= self.lines.len() - 1 {
-                return;
-            }
+            if self.cursor.y as usize >= self.lines.len() - 1 {return; }
             self.cursor.move_to(0, self.cursor.y + 1);
         } else {
             // Classic move inside a line
@@ -144,13 +155,34 @@ impl Editor {
         }
     }
 
+    pub fn get_mouse_position_index(&mut self, position: Vector2<f32>) -> Vector2<u32> {
+        let position = Vector2::new(
+            (position.x as f32 / self.font.borrow().char_width) as u32,
+            (position.y as f32 / self.font.borrow().char_height) as u32,
+        );
+        self.get_valid_cursor_position(position)
+    }
+
+    pub fn begin_selection(&mut self) {
+        self.selection.start((self.cursor.x, self.cursor.y).into());
+    }
+
+    pub fn update_selection(&mut self, position: Vector2<f32>) {
+        if self.selection.start.is_none() { return; }
+        let mouse_position = self.get_mouse_position_index(position);
+        self.selection.end(mouse_position)
+    }
+
     fn get_save_path(&self) -> Option<String> {
         Some("output.txt".to_string())
     }
 
-    pub fn save_to_file(&self) {
+    pub fn save_to_file(&mut self) {
         let filename = if let Some(f) = self.filepath.clone() { f } else if let Some(f) = self.get_save_path() { f } else { String::new() };
         if filename.len() == 0 { return; }
+        if let Some(filepath) = &self.filepath {
+            if *filepath != filename { self.filepath = Some(filename.clone()); }
+        }
         let mut data = String::new();
         for (i, line) in (&self.lines).iter().enumerate() {
             data.push_str(&line.buffer.clone().join(""));
@@ -214,5 +246,6 @@ impl Editor {
             };
         }
         self.cursor.render(graphics);
+        self.selection.render(Rc::clone(&self.font), &self.lines, graphics);
     }
 }
