@@ -1,4 +1,0 @@
- - multiple windows
- - formating (bold, italic, underline)
- - load/save
- - menubar
