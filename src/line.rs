@@ -5,11 +5,11 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::font::FormattedTextBlock;
 use speedy2d::Graphics2D;
+use crate::cursor::Cursor;
 
 use crate::font::Font;
 
 const INITIAL_LINE_CAPACITY: usize = 1024;
-
 
 #[derive(Derivative)]
 #[derivative(Debug, Clone)]
@@ -43,10 +43,34 @@ impl Line {
         }
     }
 
-    pub fn update_text_layout(&mut self) {
+    pub fn get_word_at(&self, index: u32) -> (String, u32) {
+        assert!(index <= self.buffer.len() as u32);
+        let words: Vec<String> = self.buffer
+            .join("")
+            .split(" ")
+            .filter(|c| *c != "")
+            .map(str::to_string)
+            .collect();
+        let mut total = 0;
+        let mut i = 0;
+        while total < index {
+            dbg!(i, &words.len());
+            if total + (words[i].len() as u32) < index {
+                total += words[i].len() as u32;
+                i += 1
+            } else {
+                break
+            }
+        }
+       (words[i].clone(), total + i as u32)
+    }
+
+    pub fn update_text_layout(&mut self) -> i32 { // return the difference of length
         let string = self.buffer.clone().join("");
         let font_formated_string = self.font.borrow().format(&string);
+        let mut diff: i32 = 0;
         if string != font_formated_string {
+            diff = string.len() as i32 - font_formated_string.len() as i32;
             self.buffer = font_formated_string
                 .split("")
                 .map(|c| c.to_string())
@@ -57,6 +81,7 @@ impl Line {
             self.formatted_text_block = self.font.borrow().layout_text(&font_formated_string);
             self.previous_string = font_formated_string;
         }
+        diff
     }
 
     pub fn render(&self, x: f32, y: f32, graphics: &mut Graphics2D) {

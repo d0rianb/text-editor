@@ -84,8 +84,8 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         match button {
             MouseButton::Left => {
                 self.mouse_button_pressed.0 = true;
-                let index_position = self.editor.get_mouse_position_index(self.mouse_position);
                 self.editor.selection.reset();
+                let index_position = self.editor.get_mouse_position_index(self.mouse_position);
                 self.editor.move_cursor(Vector2::new(index_position.x, index_position.y));
                 self.editor.begin_selection();
             },

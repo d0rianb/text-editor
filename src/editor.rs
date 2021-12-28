@@ -37,6 +37,7 @@ impl Editor {
     pub fn new(width: f32, height: f32) -> Self {
         let font = Rc::new(RefCell::new(Font::new(
             "resources/font/CourierRegular.ttf",
+            // "resources/font/Monaco.ttf",
             width,
             height,
         )));
@@ -46,7 +47,7 @@ impl Editor {
             lines: vec![Line::new(Rc::clone(&font))],
             font,
             filepath: Option::None,
-            event_sender:Option::None,
+            event_sender: Option::None,
             selection: Range::default()
         }
     }
@@ -163,6 +164,7 @@ impl Editor {
     }
 
     pub fn new_line(&mut self) {
+        self.delete_selection();
         let new_line = Line::new(Rc::clone(&self.font));
         let index = self.cursor.y as usize + 1;
         self.lines.insert(index, new_line);
@@ -189,6 +191,7 @@ impl Editor {
             's' => self.save_to_file(),
             'o' => self.load_file("output.txt"),
             'w' | 'q' => std::process::exit(0),
+            'd' => self.select_word_under_cursor(),
             _ => {}
         }
     }
@@ -207,10 +210,20 @@ impl Editor {
 
     pub fn update_selection(&mut self, position: Vector2<f32>) {
         let mouse_position = self.get_mouse_position_index(position);
-        if self.selection.start.is_none() {
-            self.selection.start(mouse_position);
-        }
         self.selection.end(mouse_position);
+        self.move_cursor(mouse_position);
+        // if self.selection.start.is_none() {
+        //     self.selection.start(mouse_position);
+        // }
+    }
+
+    pub fn select_word_under_cursor(&mut self) {
+        let (word, start_index) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
+        dbg!(&start_index);
+        self.selection = Range::new(
+            Vector2::new(start_index, self.cursor.y),
+            Vector2::new(start_index + word.len() as u32, self.cursor.y),
+        )
     }
 
     fn get_save_path(&self) -> Option<String> {
@@ -248,10 +261,14 @@ impl Editor {
     }
 
     pub fn update_text_layout(&mut self) {
-        for line in &mut self.lines {
-            line.update_text_layout();
+        let mut difference = 0;
+        for (i, line) in (&mut self.lines).iter_mut().enumerate() {
+            let diff = line.update_text_layout();
+            if i as u32 == self.cursor.y {
+                difference = diff;
+            }
         }
-        self.move_cursor(Vector2::new(self.cursor.x, self.cursor.y)); // Hack to get the cursor to a valid position
+        self.move_cursor_relative(difference, 0);
     }
 
     pub fn update(&mut self, dt: f32) {
@@ -308,7 +325,7 @@ impl Editor {
             };
         }
         self.cursor.render(&self.camera, graphics);
-        self.camera.render(graphics);
+        // self.camera.render(graphics);
         self.selection.render(Rc::clone(&self.font), &self.lines, graphics);
     }
 }
