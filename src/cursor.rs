@@ -13,7 +13,7 @@ use crate::EditorEvent;
 use crate::font::Font;
 
 const CURSOR_WIDTH: f32 = 3.0;
-const CURSOR_OFFSET_X: f32 = 5.0;
+const CURSOR_OFFSET_X: f32 = 2.0;
 
 #[allow(dead_code)]
 pub(crate) enum CursorType {

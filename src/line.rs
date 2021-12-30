@@ -1,11 +1,10 @@
-use std::cell::RefCell;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::font::FormattedTextBlock;
 use speedy2d::Graphics2D;
-use crate::cursor::Cursor;
 
 use crate::font::Font;
 
@@ -43,7 +42,21 @@ impl Line {
         }
     }
 
-    pub fn get_word_at(&self, index: u32) -> (String, u32) {
+    pub fn get_word_at(&self, index: u32) -> (u32, u32) {
+        let mut start_index = index;
+        let mut end_index = index;
+        let line_str = self.buffer.join("");
+        let mut chars: Vec<char> = line_str.chars().collect();
+        while start_index > 0 && chars[start_index as usize - 1] != ' ' {
+            start_index -= 1;
+        }
+        while end_index < line_str.len() as u32 && chars[end_index as usize] != ' ' {
+            end_index += 1;
+        }
+        (start_index, end_index)
+    }
+
+    pub fn _get_word_at(&self, index: u32) -> (String, u32) {
         assert!(index <= self.buffer.len() as u32);
         let words: Vec<String> = self.buffer
             .join("")
@@ -51,10 +64,10 @@ impl Line {
             .filter(|c| *c != "")
             .map(str::to_string)
             .collect();
+        dbg!(&words);
         let mut total = 0;
         let mut i = 0;
-        while total < index {
-            dbg!(i, &words.len());
+        while total <= index {
             if total + (words[i].len() as u32) < index {
                 total += words[i].len() as u32;
                 i += 1

@@ -1,14 +1,13 @@
 use std::{cmp, fs};
 
 use std::cell::RefCell;
-use std::ops::Deref;
 use std::rc::Rc;
 use speedy2d::color::Color;
 
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
-use speedy2d::window::UserEventSender;
+use speedy2d::window::{ModifiersState, UserEventSender};
 
 use crate::cursor::Cursor;
 use crate::camera::Camera;
@@ -17,7 +16,8 @@ use crate::font::Font;
 use crate::line::Line;
 use crate::range::Range;
 
-const EDITOR_PADDING: f32 = 5.;
+pub const EDITOR_PADDING: f32 = 10.;
+pub const EDITOR_OFFSET_TOP: f32 = 55.;
 
 pub fn clamp<T: Ord>(min: T, x: T, max: T) -> T {
     return cmp::max(min, cmp::min(x, max));
@@ -28,6 +28,7 @@ pub(crate) struct Editor {
     pub cursor: Cursor,
     pub camera: Camera,
     pub font: Rc<RefCell<Font>>,
+    pub modifiers : ModifiersState,
     filepath: Option<String>,
     pub event_sender: Option<UserEventSender<EditorEvent>>,
     pub selection: Range,
@@ -36,16 +37,17 @@ pub(crate) struct Editor {
 impl Editor {
     pub fn new(width: f32, height: f32) -> Self {
         let font = Rc::new(RefCell::new(Font::new(
-            "resources/font/CourierRegular.ttf",
+            "../resources/font/CourierRegular.ttf",
             // "resources/font/Monaco.ttf",
-            width,
-            height,
+            width - EDITOR_PADDING*2.,
+            height - EDITOR_OFFSET_TOP - EDITOR_PADDING*2.,
         )));
         Self {
             cursor: Cursor::new(0, 0, Rc::clone(&font)),
-            camera: Camera::new(width, height),
+            camera: Camera::new(width - EDITOR_PADDING*2., height - EDITOR_OFFSET_TOP - EDITOR_PADDING*2.),
             lines: vec![Line::new(Rc::clone(&font))],
             font,
+            modifiers: ModifiersState::default(),
             filepath: Option::None,
             event_sender: Option::None,
             selection: Range::default()
@@ -70,13 +72,35 @@ impl Editor {
     pub fn move_cursor(&mut self, position: Vector2<u32>) {
         assert!(self.lines.len() > 0);
         let pos = self.get_valid_cursor_position(position);
-        self.cursor.move_to(pos.x, pos.y);
+        if pos.x != self.cursor.x || pos.y != self.cursor.y {
+            self.cursor.move_to(pos.x, pos.y);
+        }
     }
 
     pub fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
         let max_y = self.lines.len() as u32 - 1;
-        let new_x = (self.cursor.x as i32 + rel_x) as i32;
-        let new_y = clamp(0, self.cursor.y as i32 + rel_y, max_y as i32) as u32;
+        let mut new_x = (self.cursor.x as i32 + rel_x) as i32;
+        let mut new_y = clamp(0, self.cursor.y as i32 + rel_y, max_y as i32) as u32;
+
+        if self.modifiers.shift() && self.selection.start.is_none() {
+            self.selection.start(Vector2::new(self.cursor.x, self.cursor.y));
+        }
+
+        if self.modifiers.alt() {
+            // Move to the next word
+            let (start, end) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
+            if rel_x < 0 && start != self.cursor.x  {
+                new_x = start as i32;
+            } else if rel_x > 0 && end != self.cursor.x  {
+                new_x = end as i32;
+            }
+        } else if self.modifiers.logo() {
+            if rel_x < 0  {
+                new_x = 0;
+            } else if rel_x > 0 {
+                new_x = self.lines[self.cursor.y as usize].buffer.len() as i32;
+            }
+        }
 
         if new_x < 0 {
             // Go to line before
@@ -97,10 +121,16 @@ impl Editor {
                 self.cursor.move_to(new_x as u32, new_y);
             }
         }
-        if self.cursor.computed_y() < self.camera.computed_y() + self.camera.safe_zone_size {
-            self.camera.move_y(self.cursor.computed_y() - self.camera.computed_y() - self.camera.safe_zone_size)
-        } else if self.cursor.computed_y() - self.camera.computed_y() > self.camera.height - self.camera.safe_zone_size {
-            self.camera.move_y(self.cursor.computed_y() - self.camera.computed_y() - self.camera.height + self.camera.safe_zone_size)
+        // Update selection
+        if self.modifiers.shift() {
+            self.selection.end(Vector2::new(self.cursor.x, self.cursor.y));
+        } else if rel_x.abs() > 0 || rel_y.abs() > 0 {
+            self.selection.reset();
+        }
+        if self.camera.get_cursor_real_y(&self.cursor) < self.camera.computed_y() + self.camera.safe_zone_size {
+            self.camera.move_y(self.camera.get_cursor_real_y(&self.cursor) - self.camera.computed_y() - self.camera.safe_zone_size)
+        } else if EDITOR_PADDING + self.cursor.computed_y() - self.camera.computed_y() > self.camera.height - self.camera.safe_zone_size {
+            self.camera.move_y(EDITOR_PADDING + self.cursor.computed_y() - self.camera.computed_y() - self.camera.height + self.camera.safe_zone_size)
         }
     }
 
@@ -123,7 +153,7 @@ impl Editor {
             }
             for i in 0 .. lines_indices.len() {
                 let index = initial_i + lines_indices.len() - i - 1;
-                if self.lines[index].buffer.len() == 0 {
+                if self.lines[index].buffer.len() == 0 && index != 0 {
                     self.lines.remove(index);
                 }
             }
@@ -134,6 +164,10 @@ impl Editor {
     }
 
     pub fn add_char(&mut self, c: String) {
+        if self.modifiers.logo() {
+            let chars: Vec<char> = c.chars().collect();
+            return self.shortcut(chars[0]);
+        }
         self.delete_selection();
         let pos = self.cursor.x;
         self.get_current_buffer().insert(pos as usize, c);
@@ -177,7 +211,7 @@ impl Editor {
         let last_line = self.lines.get_mut(index).unwrap();
         let text = line_before_buffer.join("");
         let nb_whitespace = text.len() - text.trim_start().len();
-        if text.trim_start().starts_with('-') {
+        if text.trim_start().starts_with('-') &&  text.trim().len() > 1 {
             let new_text = " ".repeat(nb_whitespace) + "- ";
             last_line.add_text(&new_text);
             self.cursor.move_to(nb_whitespace as u32 + 2, self.cursor.y + 1);
@@ -197,11 +231,11 @@ impl Editor {
     }
 
     pub fn get_mouse_position_index(&mut self, position: Vector2<f32>) -> Vector2<u32> {
-        let position = Vector2::new(
-            (position.x as f32 / self.font.borrow().char_width) as u32,
-            (position.y as f32 / self.font.borrow().char_height) as u32,
+        let pos = Vector2::new(
+            ((position.x as f32 + self.camera.computed_x()) / self.font.borrow().char_width + 0.5) as u32,
+            ((position.y as f32 + self.camera.computed_y()) / self.font.borrow().char_height) as u32,
         );
-        self.get_valid_cursor_position(position)
+        self.get_valid_cursor_position(pos)
     }
 
     pub fn begin_selection(&mut self) {
@@ -212,17 +246,13 @@ impl Editor {
         let mouse_position = self.get_mouse_position_index(position);
         self.selection.end(mouse_position);
         self.move_cursor(mouse_position);
-        // if self.selection.start.is_none() {
-        //     self.selection.start(mouse_position);
-        // }
     }
 
     pub fn select_word_under_cursor(&mut self) {
-        let (word, start_index) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
-        dbg!(&start_index);
+        let (start, end) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
         self.selection = Range::new(
-            Vector2::new(start_index, self.cursor.y),
-            Vector2::new(start_index + word.len() as u32, self.cursor.y),
+            Vector2::new(start, self.cursor.y),
+            Vector2::new(end, self.cursor.y),
         )
     }
 
@@ -314,8 +344,8 @@ impl Editor {
         let mut previous_line_height = 0.;
         for (i, line) in self.lines.iter().enumerate() {
             line.render(
-                - self.camera.computed_x() + EDITOR_PADDING,
-                - self.camera.computed_y() + EDITOR_PADDING + previous_line_height * (i as f32),
+                - self.camera.computed_x(),
+                - self.camera.computed_y() + previous_line_height * (i as f32),
                 graphics,
             );
             previous_line_height = if line.formatted_text_block.height() > 0. {
@@ -324,8 +354,23 @@ impl Editor {
                 line.font.borrow().char_height
             };
         }
+        // self.camera._render(graphics);
         self.cursor.render(&self.camera, graphics);
-        // self.camera.render(graphics);
-        self.selection.render(Rc::clone(&self.font), &self.lines, graphics);
+        self.selection.render(Rc::clone(&self.font), &self.lines, &self.camera, graphics);
+        graphics.draw_rectangle( // draw the title bar
+            Rectangle::new(
+                Vector2::new(0., 0.),
+                Vector2::new(self.camera.width, EDITOR_OFFSET_TOP),
+            ),
+            Color::WHITE
+        );
+        if self.camera.computed_y() > EDITOR_PADDING + EDITOR_OFFSET_TOP {
+            graphics.draw_line(
+                Vector2::new(0., EDITOR_OFFSET_TOP),
+                Vector2::new(self.camera.width, EDITOR_OFFSET_TOP),
+                0.5,
+                Color::GRAY
+            );
+        }
     }
 }

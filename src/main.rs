@@ -30,7 +30,6 @@ struct EditorWindowHandler {
     editor: Editor,
     last_editor_size: Vector2<u32>,
     tick_timestamp: Instant,
-    modifiers : ModifiersState,
     mouse_button_pressed: (bool, bool), // (Left, Right)
     mouse_position: Vector2<f32>,
 }
@@ -67,14 +66,14 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         self.last_editor_size = size_pixels;
     }
 
-    fn on_draw(&mut self, helper: &mut WindowHelper<EditorEvent>, graphics: &mut Graphics2D) {
+    fn on_draw(&mut self, _helper: &mut WindowHelper<EditorEvent>, graphics: &mut Graphics2D) {
         graphics.clear_screen(Color::WHITE);
         self.editor.render(graphics);
     }
 
     fn on_mouse_move(&mut self, helper: &mut WindowHelper<EditorEvent>, position: Vector2<f32>) {
         self.mouse_position = position.clone();
-        if self.mouse_button_pressed.0 || self.modifiers.shift() {
+        if self.mouse_button_pressed.0 || self.editor.modifiers.shift() {
             self.editor.update_selection(position);
             helper.request_redraw();
         }
@@ -118,13 +117,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         match unicode_codepoint {
             '\u{7f}' | '\u{8}' => self.editor.delete_char(),
             '\r' => self.editor.new_line(),
-            _ => {
-                if self.modifiers.logo() { // Cmd key
-                    self.editor.shortcut(unicode_codepoint);
-                } else {
-                    self.editor.add_char(unicode_codepoint.to_string())
-                }
-            },
+            _ => self.editor.add_char(unicode_codepoint.to_string())
         }
         self.editor.update_text_layout();
     }
@@ -132,14 +125,17 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
 
 
     fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) {
-        self.modifiers = state;
+        self.editor.modifiers = state;
     }
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    // For transparenting the titlebar : set
+    //      ns_window.setTitlebarAppearsTransparent_(YES);
+    //      masks |= NSWindowStyleMask::NSFullSizeContentViewWindowMask;
     let window = Window::new_with_user_events(
-        "Editor",
+        "Text Editor",
         WindowCreationOptions::new_windowed(
             WindowSize::ScaledPixels((600., 400.).into()),
             Some(WindowPosition::Center)
@@ -152,7 +148,6 @@ fn main() {
     }
     window.run_loop(EditorWindowHandler {
         editor,
-        modifiers: ModifiersState::default(),
         last_editor_size: (1200, 800).into(),
         tick_timestamp: Instant::now(),
         mouse_button_pressed: (false, false),

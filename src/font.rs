@@ -1,15 +1,10 @@
-use std::convert::TryInto;
 use speedy2d::dimen::Vector2;
-use speedy2d::font::{Codepoint, Font as S2DFont, FormattedTextBlock, TextAlignment, TextLayout, TextOptions};
+use speedy2d::font::{Font as S2DFont, FormattedTextBlock, TextAlignment, TextLayout, TextOptions};
 use std::fs;
 use std::rc::Rc;
-
-extern crate unicode_normalization;
-
-use unicode_normalization::UnicodeNormalization;
+use crate::editor::EDITOR_PADDING;
 
 const FONT_SIZE: u32 = 16;
-const EDITOR_PADDING: f32 = 5.0;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Font {
@@ -22,8 +17,8 @@ pub(crate) struct Font {
 
 impl Font {
     pub fn new(src: &str, editor_width: f32, editor_height: f32) -> Self {
-        let font_file_content = fs::read(src).unwrap();
-        let s2d_font = S2DFont::new(&font_file_content).unwrap();
+        let font_file_content = include_bytes!("../resources/font/CourierRegular.ttf"); //fs::read(src).unwrap();
+        let s2d_font = S2DFont::new(font_file_content).unwrap();
         let font_layout = s2d_font.layout_text("a", 2.0 * FONT_SIZE as f32, TextOptions::default());
         Self {
             name: src.to_string(),

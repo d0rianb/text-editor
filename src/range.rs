@@ -6,8 +6,8 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
+use crate::camera::Camera;
 
-use crate::cursor::Cursor;
 use crate::font::Font;
 use crate::line::Line;
 
@@ -95,17 +95,17 @@ impl Range {
         result
     }
 
-    pub fn render(&mut self, font: Rc<RefCell<Font>>, lines: &[Line], graphics: &mut Graphics2D) {
+    pub fn render(&mut self, font: Rc<RefCell<Font>>, lines: &[Line], camera: &Camera, graphics: &mut Graphics2D) {
         if !self.is_valid() { return; }
         let font_width = font.borrow().char_width;
         let font_height = font.borrow().char_height;
-        let initial_y = cmp::min(self.start.unwrap().y, self.end.unwrap().y) as f32 * font_height;
+        let initial_y = cmp::min(self.start.unwrap().y, self.end.unwrap().y) as f32 * font_height - camera.computed_y();
         for (i, indices) in self.get_lines_index(lines).iter().enumerate() { // TODO: cache ?
             let line_y = initial_y + i as f32 * font_height;
             graphics.draw_rectangle(
                 Rectangle::new(
-                    Vector2::new(indices.0 as f32 * font_width, line_y),
-                    Vector2::new(indices.1 as f32 * font_width, line_y + font_height),
+                    Vector2::new(indices.0 as f32 * font_width - camera.computed_x(), line_y),
+                    Vector2::new(indices.1 as f32 * font_width - camera.computed_x(), line_y + font_height),
                 ),
                 Color::from_int_rgba(100, 100, 100, 100),
             )
