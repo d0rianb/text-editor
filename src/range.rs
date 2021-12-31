@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::cmp;
+use std::cmp::Ordering;
 use std::rc::Rc;
 
 use speedy2d::color::Color;
@@ -32,6 +33,21 @@ impl Default for Range {
     }
 }
 
+fn vector_max(v1: Vector2<u32>, v2: Vector2<u32>) -> Vector2<u32> {
+    if v1.y < v2.y { return v2 }
+    if v1.y > v2.y { return v1  }
+    if v1.x < v2.x { return v2 }
+    else { return v1 }
+}
+
+fn vector_min(v1: Vector2<u32>, v2: Vector2<u32>) -> Vector2<u32> {
+    return if vector_max(v1, v2) == v2 {
+        v1
+    } else {
+        v2
+    }
+}
+
 impl Range {
     pub fn new(start: Vector2<u32>, end: Vector2<u32>) -> Self {
         Self {
@@ -51,6 +67,19 @@ impl Range {
     pub fn reset(&mut self) {
         self.start = Option::None;
         self.end = Option::None;
+    }
+
+    pub fn add(&mut self, other: Range) {
+        if !other.is_valid() { return; }
+        if !self.is_valid() {
+            self.start(other.start.unwrap());
+            self.end(other.end.unwrap());
+            return;
+        }
+        let start = vector_min(self.start.unwrap(), other.start.unwrap());
+        let end = vector_max(self.end.unwrap(), other.end.unwrap());
+        self.start(start);
+        self.end(end);
     }
 
     pub fn is_valid(&self) -> bool {

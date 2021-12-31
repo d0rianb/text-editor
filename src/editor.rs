@@ -142,27 +142,6 @@ impl Editor {
         &mut self.get_current_line().buffer
     }
 
-    fn delete_selection(&mut self) {
-        if self.selection.is_valid() {
-            let initial_i = cmp::min(self.selection.start.unwrap().y, self.selection.end.unwrap().y) as usize;
-            let lines_indices = self.selection.get_lines_index(&self.lines);
-            for (i, indices) in lines_indices.iter().enumerate() {
-                let start = cmp::min(indices.0, indices.1) as usize;
-                let end = cmp::max(indices.0, indices.1) as usize;
-                &self.lines[initial_i + i].buffer.drain(start .. end);
-            }
-            for i in 0 .. lines_indices.len() {
-                let index = initial_i + lines_indices.len() - i - 1;
-                if self.lines[index].buffer.len() == 0 && index != 0 {
-                    self.lines.remove(index);
-                }
-            }
-            let selection_start = self.selection.get_real_start().unwrap();
-            self.move_cursor(Vector2::new(selection_start.x, selection_start.y));
-            self.selection.reset();
-        }
-    }
-
     pub fn add_char(&mut self, c: String) {
         if self.modifiers.logo() {
             let chars: Vec<char> = c.chars().collect();
@@ -172,6 +151,7 @@ impl Editor {
         let pos = self.cursor.x;
         self.get_current_buffer().insert(pos as usize, c);
         self.move_cursor_relative(1, 0);
+        self.selection.reset();
     }
 
     pub fn delete_char(&mut self) {
@@ -224,8 +204,12 @@ impl Editor {
         match c {
             's' => self.save_to_file(),
             'o' => self.load_file("output.txt"),
+            'a' => self.select_all(),
+            'l' => self.select_current_line(),
+            'L' => { self.select_current_line(); self.delete_selection() },
             'w' | 'q' => std::process::exit(0),
-            'd' => self.select_word_under_cursor(),
+            'd' => self.select_current_word(),
+            'D' => { self.select_current_word(); self.delete_selection() },
             _ => {}
         }
     }
@@ -248,12 +232,49 @@ impl Editor {
         self.move_cursor(mouse_position);
     }
 
-    pub fn select_word_under_cursor(&mut self) {
+    fn delete_selection(&mut self) {
+        if self.selection.is_valid() {
+            let initial_i = cmp::min(self.selection.start.unwrap().y, self.selection.end.unwrap().y) as usize;
+            let lines_indices = self.selection.get_lines_index(&self.lines);
+            for (i, indices) in lines_indices.iter().enumerate() {
+                let start = cmp::min(indices.0, indices.1) as usize;
+                let end = cmp::max(indices.0, indices.1) as usize;
+                &self.lines[initial_i + i].buffer.drain(start .. end);
+            }
+            for i in 0 .. lines_indices.len() {
+                let index = initial_i + lines_indices.len() - i - 1;
+                if self.lines[index].buffer.len() == 0 && index != 0 {
+                    self.lines.remove(index);
+                }
+            }
+            let selection_start = self.selection.get_real_start().unwrap();
+            self.move_cursor(Vector2::new(selection_start.x, selection_start.y));
+            self.selection.reset();
+        }
+    }
+
+    fn select_current_word(&mut self) {
         let (start, end) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
         self.selection = Range::new(
             Vector2::new(start, self.cursor.y),
             Vector2::new(end, self.cursor.y),
         )
+    }
+
+    fn select_all(&mut self) {
+        let last_line_length = self.lines.last().unwrap().buffer.len() as u32;
+        self.selection.start(Vector2::ZERO);
+        self.selection.end(Vector2::new(last_line_length, self.lines.len() as u32 - 1));
+    }
+
+    fn select_current_line(&mut self) {
+        let line = &self.lines[self.cursor.y as usize];
+        let line_selection = Range::new(
+            Vector2::new(0, self.cursor.y),
+            Vector2::new(line.buffer.len() as u32, self.cursor.y)
+        );
+        self.selection.add(line_selection);
+        self.move_cursor(Vector2::new(0, self.cursor.y + 1))
     }
 
     fn get_save_path(&self) -> Option<String> {
@@ -272,11 +293,11 @@ impl Editor {
             if i + 1 != self.lines.len() { data.push('\n') }
         }
         fs::write(&filename, &data).expect(&format!("Unable to write file to {}", filename));
-
     }
 
     pub fn load_file(&mut self, filename: &str) {
         self.lines = vec![Line::new(Rc::clone(&self.font))];
+        self.selection.reset();
         self.filepath = Some(filename.to_string());
         let file_content = fs::read_to_string(&filename).expect(&format!("Unable to load file to {}", filename));
         for (i, line) in file_content.split('\n').enumerate() {
