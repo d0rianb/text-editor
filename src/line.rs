@@ -46,7 +46,7 @@ impl Line {
         let mut start_index = index;
         let mut end_index = index;
         let line_str = self.buffer.join("");
-        let mut chars: Vec<char> = line_str.chars().collect();
+        let chars: Vec<char> = line_str.chars().collect();
         while start_index > 0 && chars[start_index as usize - 1] != ' ' {
             start_index -= 1;
         }
@@ -54,28 +54,6 @@ impl Line {
             end_index += 1;
         }
         (start_index, end_index)
-    }
-
-    pub fn _get_word_at(&self, index: u32) -> (String, u32) {
-        assert!(index <= self.buffer.len() as u32);
-        let words: Vec<String> = self.buffer
-            .join("")
-            .split(" ")
-            .filter(|c| *c != "")
-            .map(str::to_string)
-            .collect();
-        dbg!(&words);
-        let mut total = 0;
-        let mut i = 0;
-        while total <= index {
-            if total + (words[i].len() as u32) < index {
-                total += words[i].len() as u32;
-                i += 1
-            } else {
-                break
-            }
-        }
-       (words[i].clone(), total + i as u32)
     }
 
     pub fn update_text_layout(&mut self) -> i32 { // return the difference of length

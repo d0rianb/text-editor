@@ -116,7 +116,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     fn on_keyboard_char(&mut self, _helper: &mut WindowHelper<EditorEvent>, unicode_codepoint: char) {
         match unicode_codepoint {
             '\u{7f}' | '\u{8}' => self.editor.delete_char(),
-            '\r' => self.editor.new_line(),
+            '\r' => self.editor.new_line(true),
             _ => self.editor.add_char(unicode_codepoint.to_string())
         }
         self.editor.update_text_layout();

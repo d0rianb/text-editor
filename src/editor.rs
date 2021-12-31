@@ -29,9 +29,10 @@ pub(crate) struct Editor {
     pub camera: Camera,
     pub font: Rc<RefCell<Font>>,
     pub modifiers : ModifiersState,
-    filepath: Option<String>,
+    pub filepath: Option<String>,
     pub event_sender: Option<UserEventSender<EditorEvent>>,
     pub selection: Range,
+    pub copy_buffer: Vec<String>
 }
 
 impl Editor {
@@ -50,7 +51,8 @@ impl Editor {
             modifiers: ModifiersState::default(),
             filepath: Option::None,
             event_sender: Option::None,
-            selection: Range::default()
+            selection: Range::default(),
+            copy_buffer: vec![]
         }
     }
 
@@ -80,7 +82,7 @@ impl Editor {
     pub fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
         let max_y = self.lines.len() as u32 - 1;
         let mut new_x = (self.cursor.x as i32 + rel_x) as i32;
-        let mut new_y = clamp(0, self.cursor.y as i32 + rel_y, max_y as i32) as u32;
+        let new_y = clamp(0, self.cursor.y as i32 + rel_y, max_y as i32) as u32;
 
         if self.modifiers.shift() && self.selection.start.is_none() {
             self.selection.start(Vector2::new(self.cursor.x, self.cursor.y));
@@ -177,11 +179,12 @@ impl Editor {
         }
     }
 
-    pub fn new_line(&mut self) {
+    pub fn new_line(&mut self, pattern_matching: bool) {
         self.delete_selection();
         let new_line = Line::new(Rc::clone(&self.font));
         let index = self.cursor.y as usize + 1;
         self.lines.insert(index, new_line);
+        if !pattern_matching { return; }
         // Pattern matching for new line
         if index == 1 {
             self.cursor.move_to(0, self.cursor.y + 1);
@@ -204,6 +207,9 @@ impl Editor {
         match c {
             's' => self.save_to_file(),
             'o' => self.load_file("output.txt"),
+            'c' => self.copy(),
+            'v' => self.paste(),
+            'x' => { self.copy(); self.delete_selection() },
             'a' => self.select_all(),
             'l' => self.select_current_line(),
             'L' => { self.select_current_line(); self.delete_selection() },
@@ -243,7 +249,7 @@ impl Editor {
             }
             for i in 0 .. lines_indices.len() {
                 let index = initial_i + lines_indices.len() - i - 1;
-                if self.lines[index].buffer.len() == 0 && index != 0 {
+                if self.lines[index].buffer.len() == 0 && self.lines.len() > 1 {
                     self.lines.remove(index);
                 }
             }
@@ -277,6 +283,39 @@ impl Editor {
         self.move_cursor(Vector2::new(0, self.cursor.y + 1))
     }
 
+    fn copy(&mut self) {
+        if !self.selection.is_valid() { return; }
+        self.copy_buffer = vec![];
+        let lines_index = self.selection.get_lines_index(&self.lines);
+        let initial_y = self.selection.get_start_y();
+        for (i, (start, end)) in lines_index.iter().enumerate() {
+            let y = initial_y as usize + i;
+            let mut text = String::new();
+            for j in *start .. *end {
+                let buffer_text = self.lines[y].buffer.get(j as usize);
+                if let Some(bt) = buffer_text { text.push_str(bt); }
+            }
+            text.push_str("\n");
+            self.copy_buffer.push(text);
+        }
+    }
+
+    fn paste(&mut self) {
+        if self.copy_buffer.is_empty() { return; }
+        let buffer_text = self.copy_buffer.join("");
+        let mut lines = buffer_text.split("\n").filter(|c| c != &"");
+        let mut text = lines.next();
+        while text.is_some() {
+            self.lines[self.cursor.y as usize].add_text(text.unwrap());
+            self.move_cursor_relative(text.unwrap().len() as i32, 0);
+            text = lines.next();
+            if text.is_some() {
+                self.new_line(false);
+                self.move_cursor_relative(0, 1);
+            }
+        }
+    }
+
     fn get_save_path(&self) -> Option<String> {
         Some("output.txt".to_string())
     }
@@ -302,7 +341,6 @@ impl Editor {
         let file_content = fs::read_to_string(&filename).expect(&format!("Unable to load file to {}", filename));
         for (i, line) in file_content.split('\n').enumerate() {
             if i < self.lines.len() {
-                // Push a line rather than using the self.new_line method in order to avoid patern matching
                 self.lines.push(Line::new(Rc::clone(&self.font)));
             }
             self.lines[i].add_text(line);

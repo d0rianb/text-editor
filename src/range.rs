@@ -64,6 +64,11 @@ impl Range {
         self.end = Some(Vector2::new(position.x, position.y));
     }
 
+    pub fn get_start_y(&self) -> u32 {
+        if !self.is_valid() { return 0; }
+        cmp::min(self.start.unwrap().y, self.end.unwrap().y)
+    }
+
     pub fn reset(&mut self) {
         self.start = Option::None;
         self.end = Option::None;
@@ -128,7 +133,7 @@ impl Range {
         if !self.is_valid() { return; }
         let font_width = font.borrow().char_width;
         let font_height = font.borrow().char_height;
-        let initial_y = cmp::min(self.start.unwrap().y, self.end.unwrap().y) as f32 * font_height - camera.computed_y();
+        let initial_y = self.get_start_y() as f32 * font_height - camera.computed_y();
         for (i, indices) in self.get_lines_index(lines).iter().enumerate() { // TODO: cache ?
             let line_y = initial_y + i as f32 * font_height;
             graphics.draw_rectangle(
