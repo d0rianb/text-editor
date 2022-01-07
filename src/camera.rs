@@ -34,7 +34,7 @@ impl Camera {
         }
     }
 
-    pub fn move_x(&mut self, dx: f32) {
+    pub fn _move_x(&mut self, dx: f32) {
         let new_x = (self.x + dx).clamp(0., self.width);
         self.transition(new_x + INITIAL_X, self.y + INITIAL_Y);
         self.x = new_x;
@@ -46,7 +46,7 @@ impl Camera {
         self.y = new_y;
     }
 
-    pub fn reset(&mut self) {
+    pub fn _reset(&mut self) {
         self.x = 0.;
         self.y = 0.;
     }

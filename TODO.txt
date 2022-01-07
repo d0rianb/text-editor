@@ -2,4 +2,7 @@
  - multiple cursors
  - formating (bold, italic, underline)
  - improve load/save (choose filepath)
+ - improve CLI (create file if not exists etc...)
+ - Ctrl-Z
+ - Intervert line with cmd + ctrl
  - menubar

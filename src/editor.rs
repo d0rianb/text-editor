@@ -2,19 +2,22 @@ use std::{cmp, fs};
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use speedy2d::color::Color;
 
+use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
 use speedy2d::window::{ModifiersState, UserEventSender};
+
+use clipboard::ClipboardProvider;
+use clipboard::ClipboardContext;
 
 use crate::cursor::Cursor;
 use crate::camera::Camera;
 use crate::EditorEvent;
 use crate::font::Font;
 use crate::line::Line;
-use crate::range::Range;
+use crate::range::{Range, vector_max, vector_min};
 
 pub const EDITOR_PADDING: f32 = 10.;
 pub const EDITOR_OFFSET_TOP: f32 = 55.;
@@ -32,7 +35,8 @@ pub(crate) struct Editor {
     pub filepath: Option<String>,
     pub event_sender: Option<UserEventSender<EditorEvent>>,
     pub selection: Range,
-    pub copy_buffer: Vec<String>
+    pub copy_buffer: Vec<String>,
+    pub underline_ranges: Vec<Range>,
 }
 
 impl Editor {
@@ -52,7 +56,8 @@ impl Editor {
             filepath: Option::None,
             event_sender: Option::None,
             selection: Range::default(),
-            copy_buffer: vec![]
+            copy_buffer: vec![],
+            underline_ranges: vec![],
         }
     }
 
@@ -82,7 +87,7 @@ impl Editor {
     pub fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
         let max_y = self.lines.len() as u32 - 1;
         let mut new_x = (self.cursor.x as i32 + rel_x) as i32;
-        let new_y = clamp(0, self.cursor.y as i32 + rel_y, max_y as i32) as u32;
+        let mut new_y = clamp(0, self.cursor.y as i32 + rel_y, max_y as i32);
 
         if self.modifiers.shift() && self.selection.start.is_none() {
             self.selection.start(Vector2::new(self.cursor.x, self.cursor.y));
@@ -102,6 +107,11 @@ impl Editor {
             } else if rel_x > 0 {
                 new_x = self.lines[self.cursor.y as usize].buffer.len() as i32;
             }
+            if rel_y < 0 {
+                new_y = 0;
+            } else if rel_y > 0 {
+                new_y = self.lines.len() as i32 - 1;
+            }
         }
 
         if new_x < 0 {
@@ -118,17 +128,22 @@ impl Editor {
             // Check if x if inside new_y buffer limits
             let new_buffer_len = self.lines[new_y as usize].buffer.len() as i32;
             if new_x >= new_buffer_len {
-                self.cursor.move_to(new_buffer_len as u32, new_y);
+                self.cursor.move_to(new_buffer_len as u32, new_y as u32);
             } else {
-                self.cursor.move_to(new_x as u32, new_y);
+                self.cursor.move_to(new_x as u32, new_y as u32);
             }
         }
         // Update selection
         if self.modifiers.shift() {
             self.selection.end(Vector2::new(self.cursor.x, self.cursor.y));
-        } else if rel_x.abs() > 0 || rel_y.abs() > 0 {
+        } else if (rel_x.abs() > 0 || rel_y.abs() > 0) && self.selection.is_valid() {
             self.selection.reset();
         }
+        self.update_camera();
+    }
+
+    fn update_camera(&mut self) {
+        // Vertical Scroll
         if self.camera.get_cursor_real_y(&self.cursor) < self.camera.computed_y() + self.camera.safe_zone_size {
             self.camera.move_y(self.camera.get_cursor_real_y(&self.cursor) - self.camera.computed_y() - self.camera.safe_zone_size)
         } else if EDITOR_PADDING + self.cursor.computed_y() - self.camera.computed_y() > self.camera.height - self.camera.safe_zone_size {
@@ -157,6 +172,11 @@ impl Editor {
     }
 
     pub fn delete_char(&mut self) {
+        if self.modifiers.alt() || self.modifiers.logo()  {
+            self.begin_selection();
+            self.move_cursor_relative(-1, 0);
+            self.end_selection();
+        }
         if self.selection.is_valid() {
             self.delete_selection();
             return;
@@ -177,14 +197,19 @@ impl Editor {
             buffer.remove(pos as usize - 1);
             self.move_cursor_relative(-1, 0);
         }
+        self.update_text_layout();
     }
 
-    pub fn new_line(&mut self, pattern_matching: bool) {
+    pub fn new_line(&mut self) {
         self.delete_selection();
-        let new_line = Line::new(Rc::clone(&self.font));
+        let mut new_line = Line::new(Rc::clone(&self.font));
         let index = self.cursor.y as usize + 1;
+        let x = self.cursor.x as usize;
+        let current_buffer = self.get_current_buffer();
+        let text_after_cursor = current_buffer.drain(x .. current_buffer.len());
+        new_line.add_text(&text_after_cursor.as_slice().join(""));
+        drop(text_after_cursor);
         self.lines.insert(index, new_line);
-        if !pattern_matching { return; }
         // Pattern matching for new line
         if index == 1 {
             self.cursor.move_to(0, self.cursor.y + 1);
@@ -203,10 +228,19 @@ impl Editor {
         }
     }
 
+    pub fn get_mouse_position_index(&mut self, position: Vector2<f32>) -> Vector2<u32> {
+        let pos = Vector2::new(
+            ((position.x as f32 + self.camera.computed_x()) / self.font.borrow().char_width + 0.5) as u32,
+            ((position.y as f32 + self.camera.computed_y()) / self.font.borrow().char_height) as u32,
+        );
+        self.get_valid_cursor_position(pos)
+    }
+
     pub fn shortcut(&mut self, c: char) {
         match c {
             's' => self.save_to_file(),
             'o' => self.load_file("output.txt"),
+            'u' => self.underline(),
             'c' => self.copy(),
             'v' => self.paste(),
             'x' => { self.copy(); self.delete_selection() },
@@ -216,20 +250,19 @@ impl Editor {
             'w' | 'q' => std::process::exit(0),
             'd' => self.select_current_word(),
             'D' => { self.select_current_word(); self.delete_selection() },
+            '+' | '=' => self.increase_font_size(),
+            '-' => self.decrease_font_size(),
             _ => {}
         }
-    }
 
-    pub fn get_mouse_position_index(&mut self, position: Vector2<f32>) -> Vector2<u32> {
-        let pos = Vector2::new(
-            ((position.x as f32 + self.camera.computed_x()) / self.font.borrow().char_width + 0.5) as u32,
-            ((position.y as f32 + self.camera.computed_y()) / self.font.borrow().char_height) as u32,
-        );
-        self.get_valid_cursor_position(pos)
     }
 
     pub fn begin_selection(&mut self) {
         self.selection.start((self.cursor.x, self.cursor.y).into());
+    }
+
+    pub fn end_selection(&mut self) {
+        self.selection.end((self.cursor.x, self.cursor.y).into());
     }
 
     pub fn update_selection(&mut self, position: Vector2<f32>) {
@@ -283,8 +316,31 @@ impl Editor {
         self.move_cursor(Vector2::new(0, self.cursor.y + 1))
     }
 
+    fn underline(&mut self) {
+        if !self.selection.is_valid() { return; }
+        let len = self.underline_ranges.len();
+        for mut i in 0 .. len {
+            assert!(len >= 1);
+            i = len - 1 - i;
+            let range = self.underline_ranges.get_mut(i).unwrap();
+            if self.selection == *range { &self.underline_ranges.remove(i); return; }
+            else if self.selection.include(range) { &self.underline_ranges.remove(i); }
+            else if range.include(&self.selection) {
+                assert!(range.is_valid());
+                let before = Range::new(range.get_real_start().unwrap(), self.selection.get_real_start().unwrap());
+                let after = Range::new(self.selection.get_real_end().unwrap(), range.get_real_end().unwrap());
+                if before.is_valid() { self.underline_ranges.push(before);  }
+                if after.is_valid() { self.underline_ranges.push(after);  }
+                self.underline_ranges.remove(i);
+                return;
+            }
+        }
+        self.underline_ranges.push(self.selection.clone());
+    }
+
     fn copy(&mut self) {
         if !self.selection.is_valid() { return; }
+        let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
         self.copy_buffer = vec![];
         let lines_index = self.selection.get_lines_index(&self.lines);
         let initial_y = self.selection.get_start_y();
@@ -298,22 +354,41 @@ impl Editor {
             text.push_str("\n");
             self.copy_buffer.push(text);
         }
+        ctx.set_contents(self.copy_buffer.join("")).unwrap();
     }
 
     fn paste(&mut self) {
+        let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
+        let clipboard_content = ctx.get_contents();
+        dbg!(clipboard_content);
+        // TODO: match on clipboard content
         if self.copy_buffer.is_empty() { return; }
         let buffer_text = self.copy_buffer.join("");
-        let mut lines = buffer_text.split("\n").filter(|c| c != &"");
+        let mut lines = buffer_text.split("\n").filter(|c| *c != "");
         let mut text = lines.next();
         while text.is_some() {
             self.lines[self.cursor.y as usize].add_text(text.unwrap());
             self.move_cursor_relative(text.unwrap().len() as i32, 0);
             text = lines.next();
             if text.is_some() {
-                self.new_line(false);
+                self.lines.push(Line::new(Rc::clone(&self.font)));
                 self.move_cursor_relative(0, 1);
             }
         }
+    }
+
+    fn increase_font_size(&mut self) {
+        self.font.borrow_mut().change_font_size(2);
+        self.update_text_layout();
+        self.update_camera();
+        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw);
+    }
+
+    fn decrease_font_size(&mut self) {
+        self.font.borrow_mut().change_font_size(-2);
+        self.update_text_layout();
+        self.update_camera();
+        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw);
     }
 
     fn get_save_path(&self) -> Option<String> {
@@ -357,7 +432,8 @@ impl Editor {
                 difference = diff;
             }
         }
-        self.move_cursor_relative(difference, 0);
+        self.font.borrow_mut().style_changed = false;
+        self.cursor.move_to((self.cursor.x as i32 + difference) as u32, self.cursor.y);
     }
 
     pub fn update(&mut self, dt: f32) {
@@ -400,7 +476,11 @@ impl Editor {
     }
 
     pub fn render(&mut self, graphics: &mut Graphics2D) {
+        let char_width = self.font.borrow().char_width;
+        let char_height = self.font.borrow().char_height;
+
         let mut previous_line_height = 0.;
+        // Draw text
         for (i, line) in self.lines.iter().enumerate() {
             line.render(
                 - self.camera.computed_x(),
@@ -412,6 +492,20 @@ impl Editor {
             } else {
                 line.font.borrow().char_height
             };
+        }
+        // draw underline
+        for range in &mut self.underline_ranges {
+            let lines_index = range.get_lines_index(&self.lines);
+            let initial_y = range.get_start_y();
+            for (i, (start, end)) in lines_index.iter().enumerate() {
+                let y = (initial_y as usize + i) as f32 * char_height;
+                graphics.draw_line(
+                    Vector2::new(*start as f32 * char_width - self.camera.computed_x(), y + 0.9 * char_height - self.camera.computed_y()),
+                    Vector2::new(*end as f32 * char_width - self.camera.computed_x(), y + 0.9 * char_height - self.camera.computed_y()),
+                    1.,
+                    Color::BLACK
+                );
+            }
         }
         // self.camera._render(graphics);
         self.cursor.render(&self.camera, graphics);

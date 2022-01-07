@@ -108,21 +108,22 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
             Some(VirtualKeyCode::Left) => self.editor.move_cursor_relative(-1, 0),
             Some(VirtualKeyCode::Up) => self.editor.move_cursor_relative(0, -1),
             Some(VirtualKeyCode::Down) => self.editor.move_cursor_relative(0, 1),
-            _ => (),
+            Some(VirtualKeyCode::Backspace) => self.editor.delete_char(),
+            Some(VirtualKeyCode::Delete) => { self.editor.move_cursor_relative(1, 0); self.editor.delete_char(); },
+            Some(VirtualKeyCode::Return) => self.editor.new_line(),
+            _ => { return; },
         }
+        self.editor.update_text_layout();
         helper.request_redraw();
     }
 
-    fn on_keyboard_char(&mut self, _helper: &mut WindowHelper<EditorEvent>, unicode_codepoint: char) {
-        match unicode_codepoint {
-            '\u{7f}' | '\u{8}' => self.editor.delete_char(),
-            '\r' => self.editor.new_line(true),
-            _ => self.editor.add_char(unicode_codepoint.to_string())
+    fn on_keyboard_char(&mut self, helper: &mut WindowHelper<EditorEvent>, unicode_codepoint: char) {
+        if unicode_codepoint >= ' '  && unicode_codepoint <= '~' {
+            self.editor.add_char(unicode_codepoint.to_string());
+            self.editor.update_text_layout();
+            helper.request_redraw();
         }
-        self.editor.update_text_layout();
     }
-
-
 
     fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) {
         self.editor.modifiers = state;

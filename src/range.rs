@@ -1,14 +1,14 @@
 use std::cell::RefCell;
 use std::cmp;
-use std::cmp::Ordering;
+use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
-use crate::camera::Camera;
 
+use crate::camera::Camera;
 use crate::font::Font;
 use crate::line::Line;
 
@@ -18,7 +18,7 @@ fn get_line_length(i: u32, lines: &[Line]) -> u32 {
 }
 
 #[derive(Derivative)]
-#[derivative(Clone, Copy, Debug)]
+#[derivative(Clone, Copy)]
 pub(crate) struct Range {
     pub start: Option<Vector2<u32>>,
     pub end: Option<Vector2<u32>>,
@@ -33,14 +33,32 @@ impl Default for Range {
     }
 }
 
-fn vector_max(v1: Vector2<u32>, v2: Vector2<u32>) -> Vector2<u32> {
+impl Debug for Range{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let start_text = if let Some(start) = self.start { start.x.to_string() + "," + &start.y.to_string() } else { "None".to_owned() } ;
+        let end_text = if let Some(end) = self.end { end.x.to_string() + "," + &end.y.to_string() } else { "None".to_owned() } ;
+        write!(f, "Range : {} - {}", start_text, end_text)
+    }
+}
+
+impl PartialEq for Range {
+    fn eq(&self, other: &Self) -> bool {
+        self.start == other.start && self.end == other.end
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        !(self == other)
+    }
+}
+
+pub fn vector_max(v1: Vector2<u32>, v2: Vector2<u32>) -> Vector2<u32> {
     if v1.y < v2.y { return v2 }
     if v1.y > v2.y { return v1  }
     if v1.x < v2.x { return v2 }
     else { return v1 }
 }
 
-fn vector_min(v1: Vector2<u32>, v2: Vector2<u32>) -> Vector2<u32> {
+pub fn vector_min(v1: Vector2<u32>, v2: Vector2<u32>) -> Vector2<u32> {
     return if vector_max(v1, v2) == v2 {
         v1
     } else {
@@ -87,6 +105,12 @@ impl Range {
         self.end(end);
     }
 
+    pub fn include(&self, other: &Range) -> bool {
+        if !self.is_valid() || !other.is_valid() { return false; }
+        vector_min(self.start.unwrap(), other.start.unwrap()) == self.start.unwrap()
+            && vector_max(self.end.unwrap(), other.end.unwrap()) == self.end.unwrap()
+    }
+
     pub fn is_valid(&self) -> bool {
         self.start.is_some() && self.end.is_some() && self.start != self.end
     }
@@ -106,6 +130,11 @@ impl Range {
             return Some(start);
         }
         return Some(end);
+    }
+
+    pub fn get_real_end(&self) -> Option<Vector2<u32>> {
+        if !self.is_valid() { return Option::None; }
+        if self.get_real_start() == self.start { self.end } else { self.start }
     }
 
     pub fn get_lines_index(&mut self, lines: &[Line]) -> Vec<(u32, u32)> {
