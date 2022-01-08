@@ -165,10 +165,13 @@ impl Range {
         let initial_y = self.get_start_y() as f32 * font_height - camera.computed_y();
         for (i, indices) in self.get_lines_index(lines).iter().enumerate() { // TODO: cache ?
             let line_y = initial_y + i as f32 * font_height;
+            let line = &lines[self.get_start_y() as usize + i];
+            let line_offset = line.alignement_offset;
+            let line_camera = Camera::from_with_offset(camera, Vector2::new(-line_offset, 0.));
             graphics.draw_rectangle(
                 Rectangle::new(
-                    Vector2::new(indices.0 as f32 * font_width - camera.computed_x(), line_y),
-                    Vector2::new(indices.1 as f32 * font_width - camera.computed_x(), line_y + font_height),
+                    Vector2::new(indices.0 as f32 * font_width - line_camera.computed_x(), line_y),
+                    Vector2::new(indices.1 as f32 * font_width - line_camera.computed_x(), line_y + font_height),
                 ),
                 Color::from_int_rgba(100, 100, 100, 100),
             )

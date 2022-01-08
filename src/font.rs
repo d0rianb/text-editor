@@ -2,7 +2,7 @@ use std::fs;
 use std::rc::Rc;
 
 use speedy2d::dimen::Vector2;
-use speedy2d::font::{Font as S2DFont, FormattedTextBlock, TextAlignment, TextLayout, TextOptions};
+use speedy2d::font::{Font as S2DFont, FormattedTextBlock, TextLayout, TextOptions};
 
 use crate::editor::EDITOR_PADDING;
 
@@ -57,7 +57,7 @@ impl Font {
     }
 
     pub fn layout_text(&self, text: &str) -> Rc<FormattedTextBlock> {
-        let text_layout_options = TextOptions::default();
+        let text_layout_options =  TextOptions::default();
         let escaped_text = self.format(text)
             .replace('\t', "  ")// Just for rendering
             .replace(" " ,"\u{a0}");  // Just for rendering

@@ -17,6 +17,7 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::window::{KeyScancode, ModifiersState, MouseButton, VirtualKeyCode, WindowCreationOptions, WindowHandler, WindowHelper, WindowPosition, WindowSize, WindowStartupInfo};
 use speedy2d::{Graphics2D, Window};
+use speedy2d::font::TextAlignment;
 
 use editor::Editor;
 
@@ -103,15 +104,25 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     }
 
     fn on_key_down(&mut self, helper: &mut WindowHelper<EditorEvent>, virtual_key_code: Option<VirtualKeyCode>, _scancode: KeyScancode) {
-        match virtual_key_code {
-            Some(VirtualKeyCode::Right) => self.editor.move_cursor_relative(1, 0),
-            Some(VirtualKeyCode::Left) => self.editor.move_cursor_relative(-1, 0),
-            Some(VirtualKeyCode::Up) => self.editor.move_cursor_relative(0, -1),
-            Some(VirtualKeyCode::Down) => self.editor.move_cursor_relative(0, 1),
-            Some(VirtualKeyCode::Backspace) => self.editor.delete_char(),
-            Some(VirtualKeyCode::Delete) => { self.editor.move_cursor_relative(1, 0); self.editor.delete_char(); },
-            Some(VirtualKeyCode::Return) => self.editor.new_line(),
-            _ => { return; },
+        if self.editor.modifiers.logo() && self.editor.modifiers.alt() {
+            // Handle ctrl-alt shortcuts
+            match virtual_key_code {
+                Some(VirtualKeyCode::Right) => self.editor.set_line_alignement(TextAlignment::Right),
+                Some(VirtualKeyCode::Left) => self.editor.set_line_alignement(TextAlignment::Left),
+                Some(VirtualKeyCode::Up) => self.editor.set_line_alignement(TextAlignment::Center),
+                _ => {}
+            }
+        } else {
+            match virtual_key_code {
+                Some(VirtualKeyCode::Right) => self.editor.move_cursor_relative(1, 0),
+                Some(VirtualKeyCode::Left) => self.editor.move_cursor_relative(-1, 0),
+                Some(VirtualKeyCode::Up) => self.editor.move_cursor_relative(0, -1),
+                Some(VirtualKeyCode::Down) => self.editor.move_cursor_relative(0, 1),
+                Some(VirtualKeyCode::Backspace) => self.editor.delete_char(),
+                Some(VirtualKeyCode::Delete) => { self.editor.move_cursor_relative(1, 0); self.editor.delete_char(); },
+                Some(VirtualKeyCode::Return) => self.editor.new_line(),
+                _ => { return; },
+            }
         }
         self.editor.update_text_layout();
         helper.request_redraw();

@@ -34,7 +34,19 @@ impl Camera {
         }
     }
 
-    pub fn _move_x(&mut self, dx: f32) {
+    pub fn from_with_offset(camera: &Self, offset: Vector2<f32>) -> Self {
+        Self {
+            x: camera.x + offset.x,
+            y: camera.y + offset.y,
+            width: camera.width,
+            height: camera.height,
+            safe_zone_size: 30.0,
+            animation: Vector2 { x: Option::None, y: Option::None },
+            event_sender: camera.event_sender.clone()
+        }
+    }
+
+    pub fn move_x(&mut self, dx: f32) {
         let new_x = (self.x + dx).clamp(0., self.width);
         self.transition(new_x + INITIAL_X, self.y + INITIAL_Y);
         self.x = new_x;

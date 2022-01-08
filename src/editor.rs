@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
+use speedy2d::font::TextAlignment;
 use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
 use speedy2d::window::{ModifiersState, UserEventSender};
@@ -17,7 +18,7 @@ use crate::camera::Camera;
 use crate::EditorEvent;
 use crate::font::Font;
 use crate::line::Line;
-use crate::range::{Range, vector_max, vector_min};
+use crate::range::{Range};
 
 pub const EDITOR_PADDING: f32 = 10.;
 pub const EDITOR_OFFSET_TOP: f32 = 55.;
@@ -36,7 +37,8 @@ pub(crate) struct Editor {
     pub event_sender: Option<UserEventSender<EditorEvent>>,
     pub selection: Range,
     pub copy_buffer: Vec<String>,
-    pub underline_ranges: Vec<Range>,
+    pub underline_buffer: Vec<Range>,
+    pub bold_buffer: Vec<Range>,
 }
 
 impl Editor {
@@ -57,7 +59,8 @@ impl Editor {
             event_sender: Option::None,
             selection: Range::default(),
             copy_buffer: vec![],
-            underline_ranges: vec![],
+            underline_buffer: vec![],
+            bold_buffer: vec![],
         }
     }
 
@@ -71,8 +74,8 @@ impl Editor {
     fn get_valid_cursor_position(&mut self, position: Vector2<u32>) -> Vector2<u32> {
         let max_y = self.lines.len() as u32 - 1;
         let y = cmp::min(position.y, max_y);
-        let line_length = self.lines[y as usize].buffer.len() as u32;
-        let x =  cmp::min(position.x, line_length);
+        let line = &self.lines[y as usize];
+        let x =  cmp::min(position.x, line.buffer.len() as u32);
         Vector2::new(x, y)
     }
 
@@ -216,7 +219,9 @@ impl Editor {
             return;
         }
         let line_before_buffer= self.lines.get(index - 1).unwrap().buffer.clone();
+        let line_before_alignement = self.lines.get(index - 1).unwrap().alignement.clone();
         let last_line = self.lines.get_mut(index).unwrap();
+        last_line.set_alignement(line_before_alignement); // Preserve the alignement
         let text = line_before_buffer.join("");
         let nb_whitespace = text.len() - text.trim_start().len();
         if text.trim_start().starts_with('-') &&  text.trim().len() > 1 {
@@ -229,10 +234,11 @@ impl Editor {
     }
 
     pub fn get_mouse_position_index(&mut self, position: Vector2<f32>) -> Vector2<u32> {
-        let pos = Vector2::new(
+        let mut pos = Vector2::new(
             ((position.x as f32 + self.camera.computed_x()) / self.font.borrow().char_width + 0.5) as u32,
             ((position.y as f32 + self.camera.computed_y()) / self.font.borrow().char_height) as u32,
         );
+        pos.x -= (&self.lines[pos.y as usize].alignement_offset / self.font.borrow().char_width + 0.5) as u32;
         self.get_valid_cursor_position(pos)
     }
 
@@ -254,7 +260,6 @@ impl Editor {
             '-' => self.decrease_font_size(),
             _ => {}
         }
-
     }
 
     pub fn begin_selection(&mut self) {
@@ -316,26 +321,49 @@ impl Editor {
         self.move_cursor(Vector2::new(0, self.cursor.y + 1))
     }
 
-    fn underline(&mut self) {
-        if !self.selection.is_valid() { return; }
-        let len = self.underline_ranges.len();
+    /// Add a range to a buffer according to the underline/bold rules
+    fn add_range_to_buffer(range: Range, buffer: &mut Vec<Range>) {
+        if !range.is_valid() { return; }
+        let len = buffer.len();
         for mut i in 0 .. len {
             assert!(len >= 1);
             i = len - 1 - i;
-            let range = self.underline_ranges.get_mut(i).unwrap();
-            if self.selection == *range { &self.underline_ranges.remove(i); return; }
-            else if self.selection.include(range) { &self.underline_ranges.remove(i); }
-            else if range.include(&self.selection) {
-                assert!(range.is_valid());
-                let before = Range::new(range.get_real_start().unwrap(), self.selection.get_real_start().unwrap());
-                let after = Range::new(self.selection.get_real_end().unwrap(), range.get_real_end().unwrap());
-                if before.is_valid() { self.underline_ranges.push(before);  }
-                if after.is_valid() { self.underline_ranges.push(after);  }
-                self.underline_ranges.remove(i);
+            let buffer_range = buffer.get_mut(i).unwrap();
+            if range == *buffer_range { buffer.remove(i); return; }
+            else if range.include(buffer_range) { buffer.remove(i); }
+            else if buffer_range.include(&range) {
+                assert!(buffer_range.is_valid());
+                let before = Range::new(buffer_range.get_real_start().unwrap(), range.get_real_start().unwrap());
+                let after = Range::new(range.get_real_end().unwrap(), buffer_range.get_real_end().unwrap());
+                if before.is_valid() { buffer.push(before);  }
+                if after.is_valid() { buffer.push(after);  }
+                buffer.remove(i);
                 return;
             }
         }
-        self.underline_ranges.push(self.selection.clone());
+        buffer.push(range);
+    }
+
+    fn underline(&mut self) {
+        Self::add_range_to_buffer(self.selection.clone(),  &mut self.underline_buffer);
+    }
+
+    fn bold(&mut self) {
+        Self::add_range_to_buffer(self.selection.clone(),  &mut self.bold_buffer);
+    }
+
+    pub fn set_line_alignement(&mut self, alignement: TextAlignment) {
+        if self.selection.is_valid() {
+            let start = self.selection.get_real_start().unwrap().y as usize;
+            let end = self.selection.get_real_end().unwrap().y as usize;
+            for (i, line) in self.lines.iter_mut().enumerate() {
+                if start <= i && i <= end {
+                    line.set_alignement(alignement.clone());
+                }
+            }
+        } else {
+            self.get_current_line().set_alignement(alignement);
+        }
     }
 
     fn copy(&mut self) {
@@ -381,14 +409,14 @@ impl Editor {
         self.font.borrow_mut().change_font_size(2);
         self.update_text_layout();
         self.update_camera();
-        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw);
+        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw).unwrap();
     }
 
     fn decrease_font_size(&mut self) {
         self.font.borrow_mut().change_font_size(-2);
         self.update_text_layout();
         self.update_camera();
-        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw);
+        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw).unwrap();
     }
 
     fn get_save_path(&self) -> Option<String> {
@@ -411,6 +439,8 @@ impl Editor {
 
     pub fn load_file(&mut self, filename: &str) {
         self.lines = vec![Line::new(Rc::clone(&self.font))];
+        self.underline_buffer = vec![];
+        self.bold_buffer = vec![];
         self.selection.reset();
         self.filepath = Some(filename.to_string());
         let file_content = fs::read_to_string(&filename).expect(&format!("Unable to load file to {}", filename));
@@ -493,22 +523,31 @@ impl Editor {
                 line.font.borrow().char_height
             };
         }
+
+        // Specific line camera which derive of the global one to handle text alignement
+        let line_offset = self.get_current_line().alignement_offset;
+        let line_camera = Camera::from_with_offset(&self.camera, Vector2::new(-line_offset, 0.));
+
         // draw underline
-        for range in &mut self.underline_ranges {
+        for range in &mut self.underline_buffer {
+            assert!(range.is_valid());
+            let line = &self.lines[range.start.unwrap().y as usize];
+            let line_offset = line.alignement_offset;
+            let line_camera = Camera::from_with_offset(&self.camera, Vector2::new(-line_offset, 0.));
             let lines_index = range.get_lines_index(&self.lines);
             let initial_y = range.get_start_y();
             for (i, (start, end)) in lines_index.iter().enumerate() {
                 let y = (initial_y as usize + i) as f32 * char_height;
                 graphics.draw_line(
-                    Vector2::new(*start as f32 * char_width - self.camera.computed_x(), y + 0.9 * char_height - self.camera.computed_y()),
-                    Vector2::new(*end as f32 * char_width - self.camera.computed_x(), y + 0.9 * char_height - self.camera.computed_y()),
+                    Vector2::new(*start as f32 * char_width - line_camera.computed_x(), y + 0.9 * char_height - line_camera.computed_y()),
+                    Vector2::new(*end as f32 * char_width - line_camera.computed_x(), y + 0.9 * char_height - line_camera.computed_y()),
                     1.,
                     Color::BLACK
                 );
             }
         }
         // self.camera._render(graphics);
-        self.cursor.render(&self.camera, graphics);
+        self.cursor.render(&line_camera, graphics);
         self.selection.render(Rc::clone(&self.font), &self.lines, &self.camera, graphics);
         graphics.draw_rectangle( // draw the title bar
             Rectangle::new(

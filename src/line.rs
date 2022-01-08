@@ -3,7 +3,7 @@ use std::cell::RefCell;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
-use speedy2d::font::FormattedTextBlock;
+use speedy2d::font::{FormattedTextBlock, TextAlignment};
 use speedy2d::Graphics2D;
 
 use crate::font::Font;
@@ -15,6 +15,8 @@ const INITIAL_LINE_CAPACITY: usize = 1024;
 pub(crate) struct Line {
     pub buffer: Vec<String>,
     pub font: Rc<RefCell<Font>>,
+    pub alignement: TextAlignment,
+    pub alignement_offset: f32,
     #[derivative(Debug = "ignore")]
     pub formatted_text_block: Rc<FormattedTextBlock>,
     previous_string: String,
@@ -26,6 +28,8 @@ impl Line {
         Line {
             buffer: Vec::with_capacity(INITIAL_LINE_CAPACITY),
             previous_string: String::new(),
+            alignement: TextAlignment::Left,
+            alignement_offset: 0.,
             formatted_text_block,
             font,
         }
@@ -35,6 +39,16 @@ impl Line {
         for c in text.chars() {
             self.buffer.push(c.to_string());
         }
+    }
+
+    pub fn set_alignement(&mut self, alignement: TextAlignment) {
+        let editor_width = self.font.borrow().editor_size.x;
+        self.alignement_offset = match alignement {
+            TextAlignment::Left => 0.,
+            TextAlignment::Center => (editor_width - self.formatted_text_block.width()) / 2.,
+            TextAlignment::Right => editor_width - self.formatted_text_block.width()
+        };
+        self.alignement = alignement;
     }
 
     pub fn get_word_at(&self, index: u32) -> (u32, u32) {
@@ -71,6 +85,6 @@ impl Line {
     }
 
     pub fn render(&self, x: f32, y: f32, graphics: &mut Graphics2D) {
-        graphics.draw_text(Vector2::new(x, y), Color::BLACK, &self.formatted_text_block);
+        graphics.draw_text(Vector2::new(x + self.alignement_offset, y), Color::BLACK, &self.formatted_text_block);
     }
 }
