@@ -12,18 +12,18 @@ use crate::camera::Camera;
 use crate::EditorEvent;
 use crate::font::Font;
 
-const CURSOR_WIDTH: f32 = 3.0;
-const CURSOR_OFFSET_X: f32 = 2.0;
+pub const CURSOR_WIDTH: f32 = 3.0;
+pub const CURSOR_OFFSET_X: f32 = 2.0;
 
 #[allow(dead_code)]
-pub(crate) enum CursorType {
+pub enum CursorType {
     Carret,
     Cross,
     // Rect,
     // Underscore,
 }
 
-pub(crate) struct Cursor {
+pub struct Cursor {
     pub x: u32,
     pub y: u32,
     pub font: Rc<RefCell<Font>>,
@@ -65,6 +65,10 @@ impl Cursor {
         else {
             self.y as f32 * self.font.borrow().char_height
         }
+    }
+
+    pub fn position(&self) -> Vector2<f32> {
+        Vector2::new(self.computed_x(), self.computed_y())
     }
 
     fn transition(&mut self, x: u32, y: u32) {

@@ -30,7 +30,7 @@ fn get_easing_fn(f: EasingFunction) -> Box<dyn Fn(f32) -> f32 + 'static> {
 
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub(crate) struct Animation {
+pub struct Animation {
     pub from: f32,
     pub to: f32,
     pub duration: f32,
@@ -44,7 +44,7 @@ pub(crate) struct Animation {
     speed: f32,
     pub last_t: f32,
     #[derivative(Debug = "ignore")]
-    animation_event_sender: Option<UserEventSender<EditorEvent>>,
+    event_sender: Option<UserEventSender<EditorEvent>>,
 }
 
 impl Animation {
@@ -61,7 +61,7 @@ impl Animation {
             is_reversed: false,
             speed: (to - from).abs() as f32 / duration,
             last_t: 0.,
-            animation_event_sender: aes,
+            event_sender: aes,
         }
     }
 
@@ -115,7 +115,7 @@ impl Animation {
         }
         self.last_t = t;
         self.value = self.from + (self.to - self.from) * (self.easing)(t);
-        if let Some(aes) = &self.animation_event_sender {
+        if let Some(aes) = &self.event_sender {
             aes.send_event(EditorEvent::Redraw).unwrap();
         }
     }
@@ -126,5 +126,9 @@ impl Animation {
         return self.has_started && !(self.is_ended || self.is_paused);
     }
 
-    pub fn on_finish(&self) {}
+    pub fn on_finish(&self) {
+        if let Some(es) = &self.event_sender {
+            es.send_event(EditorEvent::Redraw).unwrap();
+        }
+    }
 }

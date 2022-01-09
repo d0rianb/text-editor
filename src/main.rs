@@ -8,6 +8,8 @@ mod font;
 mod line;
 mod range;
 mod camera;
+mod contextual_menu;
+mod render_helper;
 
 use std::thread;
 use std::env;
@@ -25,7 +27,11 @@ const FPS: u64 = 60;
 const FRAME_DURATION: u64 = 1000 / FPS; // ms
 
 #[derive(PartialEq, Debug, Clone, Copy)]
-enum EditorEvent { Udpate, Redraw }
+pub enum EditorEvent { Udpate, Redraw, Focus(FocusElement) }
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub enum FocusElement { Editor, MainMenu }
+
 
 struct EditorWindowHandler {
     editor: Editor,
@@ -33,6 +39,7 @@ struct EditorWindowHandler {
     tick_timestamp: Instant,
     mouse_button_pressed: (bool, bool), // (Left, Right)
     mouse_position: Vector2<f32>,
+    focus: FocusElement,
 }
 
 impl WindowHandler<EditorEvent> for EditorWindowHandler {
@@ -55,7 +62,8 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
             EditorEvent::Udpate => {
                 self.editor.update(self.tick_timestamp.elapsed().as_millis() as f32);
                 self.tick_timestamp = Instant::now();
-            }
+            },
+            EditorEvent::Focus(focus_element) => self.focus = focus_element
         }
     }
 
@@ -81,6 +89,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     }
 
     fn on_mouse_button_down(&mut self, helper: &mut WindowHelper<EditorEvent>, button: MouseButton) {
+        if self.focus != FocusElement::Editor { return; }
         match button {
             MouseButton::Left => {
                 self.mouse_button_pressed.0 = true;
@@ -104,24 +113,40 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     }
 
     fn on_key_down(&mut self, helper: &mut WindowHelper<EditorEvent>, virtual_key_code: Option<VirtualKeyCode>, _scancode: KeyScancode) {
-        if self.editor.modifiers.logo() && self.editor.modifiers.alt() {
-            // Handle ctrl-alt shortcuts
+        if self.focus == FocusElement::MainMenu {
+            let menu = &mut self.editor.menu;
             match virtual_key_code {
-                Some(VirtualKeyCode::Right) => self.editor.set_line_alignement(TextAlignment::Right),
-                Some(VirtualKeyCode::Left) => self.editor.set_line_alignement(TextAlignment::Left),
-                Some(VirtualKeyCode::Up) => self.editor.set_line_alignement(TextAlignment::Center),
-                _ => {}
+                Some(VirtualKeyCode::Up) => menu.move_up(),
+                Some(VirtualKeyCode::Down) => menu.move_down(),
+                Some(VirtualKeyCode::Return) => menu.select(),
+                Some(VirtualKeyCode::Escape) => menu.close(),
+                Some(VirtualKeyCode::Tab) => { if !self.editor.modifiers.shift() { menu.move_down() } else { menu.move_up() } },
+                _ => self.editor.menu.close()
             }
         } else {
-            match virtual_key_code {
-                Some(VirtualKeyCode::Right) => self.editor.move_cursor_relative(1, 0),
-                Some(VirtualKeyCode::Left) => self.editor.move_cursor_relative(-1, 0),
-                Some(VirtualKeyCode::Up) => self.editor.move_cursor_relative(0, -1),
-                Some(VirtualKeyCode::Down) => self.editor.move_cursor_relative(0, 1),
-                Some(VirtualKeyCode::Backspace) => self.editor.delete_char(),
-                Some(VirtualKeyCode::Delete) => { self.editor.move_cursor_relative(1, 0); self.editor.delete_char(); },
-                Some(VirtualKeyCode::Return) => self.editor.new_line(),
-                _ => { return; },
+            if self.editor.modifiers.logo() && self.editor.modifiers.alt() {
+                // Handle ctrl-alt shortcuts
+                match virtual_key_code {
+                    Some(VirtualKeyCode::Right) => self.editor.set_line_alignement(TextAlignment::Right),
+                    Some(VirtualKeyCode::Left) => self.editor.set_line_alignement(TextAlignment::Left),
+                    Some(VirtualKeyCode::Up) => self.editor.set_line_alignement(TextAlignment::Center),
+                    _ => {}
+                }
+            } else {
+                match virtual_key_code {
+                    Some(VirtualKeyCode::Right) => self.editor.move_cursor_relative(1, 0),
+                    Some(VirtualKeyCode::Left) => self.editor.move_cursor_relative(-1, 0),
+                    Some(VirtualKeyCode::Up) => self.editor.move_cursor_relative(0, -1),
+                    Some(VirtualKeyCode::Down) => self.editor.move_cursor_relative(0, 1),
+                    Some(VirtualKeyCode::Backspace) => self.editor.delete_char(),
+                    Some(VirtualKeyCode::Delete) => {
+                        self.editor.move_cursor_relative(1, 0);
+                        self.editor.delete_char();
+                    },
+                    Some(VirtualKeyCode::Return) => self.editor.new_line(),
+                    Some(VirtualKeyCode::Escape) => self.editor.menu.close(),
+                    _ => { return; },
+                }
             }
         }
         self.editor.update_text_layout();
@@ -164,5 +189,6 @@ fn main() {
         tick_timestamp: Instant::now(),
         mouse_button_pressed: (false, false),
         mouse_position: Vector2::new(0., 0.),
+        focus: FocusElement::Editor
     });
 }

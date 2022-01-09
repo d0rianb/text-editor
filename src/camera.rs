@@ -8,7 +8,7 @@ use crate::cursor::Cursor;
 use crate::editor::{EDITOR_OFFSET_TOP, EDITOR_PADDING};
 use crate::EditorEvent;
 
-pub(crate) struct Camera {
+pub struct Camera {
     x: f32,
     y: f32,
     pub width: f32,
@@ -78,6 +78,10 @@ impl Camera {
         else {
             self.y + INITIAL_Y
         }
+    }
+
+    pub fn position(&self) -> Vector2<f32> {
+        Vector2::new(self.computed_x(), self.computed_y())
     }
 
     pub fn get_cursor_real_y(&self, cursor: &Cursor) -> f32 {

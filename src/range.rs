@@ -19,7 +19,7 @@ fn get_line_length(i: u32, lines: &[Line]) -> u32 {
 
 #[derive(Derivative)]
 #[derivative(Clone, Copy)]
-pub(crate) struct Range {
+pub struct Range {
     pub start: Option<Vector2<u32>>,
     pub end: Option<Vector2<u32>>,
 }

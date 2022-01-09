@@ -15,6 +15,7 @@ use clipboard::ClipboardContext;
 
 use crate::cursor::Cursor;
 use crate::camera::Camera;
+use crate::contextual_menu::ContextualMenu;
 use crate::EditorEvent;
 use crate::font::Font;
 use crate::line::Line;
@@ -27,7 +28,7 @@ pub fn clamp<T: Ord>(min: T, x: T, max: T) -> T {
     return cmp::max(min, cmp::min(x, max));
 }
 
-pub(crate) struct Editor {
+pub struct Editor {
     pub lines: Vec<Line>,
     pub cursor: Cursor,
     pub camera: Camera,
@@ -39,16 +40,18 @@ pub(crate) struct Editor {
     pub copy_buffer: Vec<String>,
     pub underline_buffer: Vec<Range>,
     pub bold_buffer: Vec<Range>,
+    pub menu: ContextualMenu,
 }
 
 impl Editor {
     pub fn new(width: f32, height: f32) -> Self {
         let font = Rc::new(RefCell::new(Font::new(
-            "../resources/font/CourierRegular.ttf",
+            include_bytes!("../resources/font/CourierRegular.ttf"),
             // "resources/font/Monaco.ttf",
             width - EDITOR_PADDING*2.,
             height - EDITOR_OFFSET_TOP - EDITOR_PADDING*2.,
         )));
+        let system_font = Rc::new(Font::new(include_bytes!("../resources/font/Roboto-Regular.ttf"), width, height));
         Self {
             cursor: Cursor::new(0, 0, Rc::clone(&font)),
             camera: Camera::new(width - EDITOR_PADDING*2., height - EDITOR_OFFSET_TOP - EDITOR_PADDING*2.),
@@ -61,12 +64,14 @@ impl Editor {
             copy_buffer: vec![],
             underline_buffer: vec![],
             bold_buffer: vec![],
+            menu: ContextualMenu::new(system_font),
         }
     }
 
-    pub fn set_animation_event_sender(&mut self, aes: Option<UserEventSender<EditorEvent>>) {
-        self.cursor.event_sender = aes.clone();
-        self.camera.event_sender = aes;
+    pub fn set_animation_event_sender(&mut self, es: Option<UserEventSender<EditorEvent>>) {
+        self.cursor.event_sender = es.clone();
+        self.camera.event_sender = es.clone();
+        self.menu.event_sender = es.clone();
     }
 
     pub fn on_resize(&mut self, size: Vector2<u32>) { self.font.borrow_mut().on_resize(size) }
@@ -75,7 +80,7 @@ impl Editor {
         let max_y = self.lines.len() as u32 - 1;
         let y = cmp::min(position.y, max_y);
         let line = &self.lines[y as usize];
-        let x =  cmp::min(position.x, line.buffer.len() as u32);
+        let x =  cmp::min(position.x - (line.alignement_offset / self.font.borrow().char_width + 0.5) as u32, line.buffer.len() as u32);
         Vector2::new(x, y)
     }
 
@@ -234,11 +239,10 @@ impl Editor {
     }
 
     pub fn get_mouse_position_index(&mut self, position: Vector2<f32>) -> Vector2<u32> {
-        let mut pos = Vector2::new(
+        let pos = Vector2::new(
             ((position.x as f32 + self.camera.computed_x()) / self.font.borrow().char_width + 0.5) as u32,
             ((position.y as f32 + self.camera.computed_y()) / self.font.borrow().char_height) as u32,
         );
-        pos.x -= (&self.lines[pos.y as usize].alignement_offset / self.font.borrow().char_width + 0.5) as u32;
         self.get_valid_cursor_position(pos)
     }
 
@@ -258,6 +262,7 @@ impl Editor {
             'D' => { self.select_current_word(); self.delete_selection() },
             '+' | '=' => self.increase_font_size(),
             '-' => self.decrease_font_size(),
+            'n' => self.menu.open(),
             _ => {}
         }
     }
@@ -467,40 +472,20 @@ impl Editor {
     }
 
     pub fn update(&mut self, dt: f32) {
-        if let Some(animation_x) = &mut self.cursor.animation.x {
-            if !animation_x.has_started {
-                animation_x.start();
-            }
-            animation_x.update(dt);
-            if animation_x.is_ended {
-                self.cursor.animation.x = Option::None;
-            }
-        }
-        if let Some(animation_y) = &mut self.cursor.animation.y {
-            if !animation_y.has_started {
-                animation_y.start();
-            }
-            animation_y.update(dt);
-            if animation_y.is_ended {
-                self.cursor.animation.y = Option::None;
-            }
-        }
-        if let Some(animation_x) = &mut self.camera.animation.x {
-            if !animation_x.has_started {
-                animation_x.start();
-            }
-            animation_x.update(dt);
-            if animation_x.is_ended {
-                self.camera.animation.x = Option::None;
-            }
-        }
-        if let Some(animation_y) = &mut self.camera.animation.y {
-            if !animation_y.has_started {
-                animation_y.start();
-            }
-            animation_y.update(dt);
-            if animation_y.is_ended {
-                self.camera.animation.y = Option::None;
+        let animations = [
+            &mut self.cursor.animation.x, &mut self.cursor.animation.y,
+            &mut self.camera.animation.x,  &mut self.camera.animation.y,
+            &mut self.menu.size_animation.x,  &mut self.menu.size_animation.y, &mut self.menu.focus_y_animation
+        ];
+        for animation in animations {
+            if let Some(anim) = animation {
+                if !anim.has_started {
+                    anim.start();
+                }
+                anim.update(dt);
+                if anim.is_ended {
+                    *animation = Option::None;
+                }
             }
         }
     }
@@ -549,6 +534,7 @@ impl Editor {
         // self.camera._render(graphics);
         self.cursor.render(&line_camera, graphics);
         self.selection.render(Rc::clone(&self.font), &self.lines, &self.camera, graphics);
+        self.menu.render(&self.cursor, &self.camera, graphics);
         graphics.draw_rectangle( // draw the title bar
             Rectangle::new(
                 Vector2::new(0., 0.),
@@ -556,6 +542,7 @@ impl Editor {
             ),
             Color::WHITE
         );
+        // draw the title bar line
         if self.camera.computed_y() > EDITOR_PADDING + EDITOR_OFFSET_TOP {
             graphics.draw_line(
                 Vector2::new(0., EDITOR_OFFSET_TOP),

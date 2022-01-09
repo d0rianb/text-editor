@@ -12,7 +12,7 @@ const INITIAL_LINE_CAPACITY: usize = 1024;
 
 #[derive(Derivative)]
 #[derivative(Debug, Clone)]
-pub(crate) struct Line {
+pub struct Line {
     pub buffer: Vec<String>,
     pub font: Rc<RefCell<Font>>,
     pub alignement: TextAlignment,

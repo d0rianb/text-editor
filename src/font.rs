@@ -11,7 +11,7 @@ const MAX_FONT_SIZE: u32 = 64;
 const DEFAULT_FONT_SIZE: u32 = 16;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Font {
+pub struct Font {
     pub name: String,
     pub size: u32,
     pub char_width: f32,
@@ -22,12 +22,12 @@ pub(crate) struct Font {
 }
 
 impl Font {
-    pub fn new(src: &str, editor_width: f32, editor_height: f32) -> Self {
-        let font_file_content = include_bytes!("../resources/font/CourierRegular.ttf"); //fs::read(src).unwrap();
+    pub fn new(bytes: &[u8], editor_width: f32, editor_height: f32) -> Self {
+        let font_file_content = bytes;
         let s2d_font = S2DFont::new(font_file_content).unwrap();
         let font_layout = s2d_font.layout_text("a", 2.0 * DEFAULT_FONT_SIZE as f32, TextOptions::default());
         Self {
-            name: src.to_string(),
+            name: "src".to_string(),
             size: DEFAULT_FONT_SIZE,
             char_width: font_layout.width(),
             char_height: font_layout.height(),
@@ -57,7 +57,7 @@ impl Font {
     }
 
     pub fn layout_text(&self, text: &str) -> Rc<FormattedTextBlock> {
-        let text_layout_options =  TextOptions::default();
+        let text_layout_options = TextOptions::default();
         let escaped_text = self.format(text)
             .replace('\t', "  ")// Just for rendering
             .replace(" " ,"\u{a0}");  // Just for rendering
