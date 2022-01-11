@@ -15,7 +15,7 @@ use clipboard::ClipboardContext;
 
 use crate::cursor::Cursor;
 use crate::camera::Camera;
-use crate::contextual_menu::ContextualMenu;
+use crate::contextual_menu::{ContextualMenu, MenuItem};
 use crate::EditorEvent;
 use crate::font::Font;
 use crate::line::Line;
@@ -28,7 +28,7 @@ pub fn clamp<T: Ord>(min: T, x: T, max: T) -> T {
     return cmp::max(min, cmp::min(x, max));
 }
 
-pub struct Editor {
+pub struct Editor<'a> {
     pub lines: Vec<Line>,
     pub cursor: Cursor,
     pub camera: Camera,
@@ -40,10 +40,10 @@ pub struct Editor {
     pub copy_buffer: Vec<String>,
     pub underline_buffer: Vec<Range>,
     pub bold_buffer: Vec<Range>,
-    pub menu: ContextualMenu,
+    pub menu: ContextualMenu<'a>,
 }
 
-impl Editor {
+impl<'a> Editor<'a> {
     pub fn new(width: f32, height: f32) -> Self {
         let font = Rc::new(RefCell::new(Font::new(
             include_bytes!("../resources/font/CourierRegular.ttf"),
@@ -80,8 +80,8 @@ impl Editor {
         let max_y = self.lines.len() as u32 - 1;
         let y = cmp::min(position.y, max_y);
         let line = &self.lines[y as usize];
-        let x =  cmp::min(position.x - (line.alignement_offset / self.font.borrow().char_width + 0.5) as u32, line.buffer.len() as u32);
-        Vector2::new(x, y)
+        let x =  cmp::max(0, cmp::min(position.x as i32 - (line.alignement_offset / self.font.borrow().char_width + 0.5) as i32, line.buffer.len() as i32));
+        Vector2::new(x as u32, y)
     }
 
     pub fn move_cursor(&mut self, position: Vector2<u32>) {
@@ -167,7 +167,7 @@ impl Editor {
         &mut self.get_current_line().buffer
     }
 
-    pub fn add_char(&mut self, c: String) {
+    pub fn add_char(&'a mut self, c: String) {
         if self.modifiers.logo() {
             let chars: Vec<char> = c.chars().collect();
             return self.shortcut(chars[0]);
@@ -246,7 +246,7 @@ impl Editor {
         self.get_valid_cursor_position(pos)
     }
 
-    pub fn shortcut(&mut self, c: char) {
+    pub fn shortcut(&'a mut self, c: char) {
         match c {
             's' => self.save_to_file(),
             'o' => self.load_file("output.txt"),
@@ -391,6 +391,7 @@ impl Editor {
     }
 
     fn paste(&mut self) {
+        if self.selection.is_valid() { self.delete_selection(); }
         let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
         let clipboard_content = ctx.get_contents();
         dbg!(clipboard_content);
@@ -424,11 +425,25 @@ impl Editor {
         self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw).unwrap();
     }
 
-    fn get_save_path(&self) -> Option<String> {
+    fn get_save_path(&'a mut self) -> Option<String> {
+        let recent_files = fs::read_to_string("resources/recent_files.txt").expect("cannot find recent_files");
+        let mut items = vec![MenuItem { title: "Open ...".into(), callback: Box::new(|| ()) }];
+        for path in recent_files.split("\n").filter(|c| *c != "") {
+            // items.push(MenuItem {
+            //     title: path.into(),
+                // callback: Box::new(move || self.set_file_path(path))
+            // })
+        }
+        self.menu.set_items(items);
+        self.menu.open();
         Some("output.txt".to_string())
     }
 
-    pub fn save_to_file(&mut self) {
+    pub fn set_file_path(&mut self, path: &str) {
+       dbg!(path);
+    }
+
+    pub fn save_to_file(&'a mut self) {
         let filename = if let Some(f) = self.filepath.clone() { f } else if let Some(f) = self.get_save_path() { f } else { String::new() };
         if filename.len() == 0 { return; }
         if let Some(filepath) = &self.filepath {
@@ -442,12 +457,12 @@ impl Editor {
         fs::write(&filename, &data).expect(&format!("Unable to write file to {}", filename));
     }
 
-    pub fn load_file(&mut self, filename: &str) {
+    pub fn load_file(&'a mut self, filename: &str) {
         self.lines = vec![Line::new(Rc::clone(&self.font))];
         self.underline_buffer = vec![];
         self.bold_buffer = vec![];
         self.selection.reset();
-        self.filepath = Some(filename.to_string());
+        self.filepath =  self.get_save_path();
         let file_content = fs::read_to_string(&filename).expect(&format!("Unable to load file to {}", filename));
         for (i, line) in file_content.split('\n').enumerate() {
             if i < self.lines.len() {

@@ -1,10 +1,7 @@
-use std::fs;
 use std::rc::Rc;
 
 use speedy2d::dimen::Vector2;
 use speedy2d::font::{Font as S2DFont, FormattedTextBlock, TextLayout, TextOptions};
-
-use crate::editor::EDITOR_PADDING;
 
 const MIN_FONT_SIZE: u32 = 4;
 const MAX_FONT_SIZE: u32 = 64;

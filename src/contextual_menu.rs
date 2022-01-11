@@ -5,12 +5,11 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::font::FormattedTextBlock;
 use speedy2d::Graphics2D;
-use speedy2d::shape::Rectangle;
 use speedy2d::window::UserEventSender;
 
 use crate::camera::Camera;
 use crate::cursor::{Cursor, CURSOR_OFFSET_X};
-use crate::{EditorEvent, FocusElement};
+use crate::EditorEvent;
 use crate::animation::{Animation, EasingFunction};
 use crate::FocusElement::{Editor, MainMenu};
 use crate::font::Font;
@@ -19,41 +18,37 @@ use crate::render_helper::draw_rounded_rectangle;
 const ITEM_PADDING: f32 = 5.;
 const ANIMATION_DURATION: f32 = 100.;
 
-pub struct MenuItem {
-    title: String,
-    callback: Box<dyn Fn()>
+pub struct MenuItem<'a> {
+    pub title: String,
+    pub callback: Box<dyn FnMut() + 'a>
 }
 
-impl Debug for MenuItem {
+impl<'a> Debug for MenuItem<'a>{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "MenuItem : {}", self.title)
     }
 }
 
-#[derive(Derivative)]
-#[derivative(Debug)]
-pub struct ContextualMenu {
+pub struct ContextualMenu<'a> {
     pub is_visible: bool,
-    items: Vec<MenuItem>,
+    items: Vec<MenuItem<'a>>,
     focus_index: usize,
     system_font: Rc<Font>,
-    #[derivative(Debug = "ignore")]
     formated_items: Vec<Rc<FormattedTextBlock>>,
-    #[derivative(Debug = "ignore")]
     pub event_sender: Option<UserEventSender<EditorEvent>>,
     pub size_animation: Vector2<Option<Animation>>,
     pub focus_y_animation: Option<Animation>,
 }
 
-impl ContextualMenu {
+impl<'a> ContextualMenu<'a> {
     pub fn new(font: Rc<Font>) -> Self {
         let mut menu = Self {
             is_visible: false,
             items: vec![
-                MenuItem { title: "Save".to_string(), callback: Box::new((|| ())) },
-                MenuItem { title: "Save to".to_string(), callback: Box::new((|| println!("save to"))) },
-                MenuItem { title: "Open >".to_string(), callback: Box::new((|| ())) },
-                MenuItem { title: "Exit".to_string(), callback: Box::new((|| ())) },
+                MenuItem { title: "Save".to_string(), callback: Box::new(|| ()) },
+                MenuItem { title: "Save to".to_string(), callback: Box::new(|| println!("save to")) },
+                MenuItem { title: "Open >".to_string(), callback: Box::new(|| ()) },
+                MenuItem { title: "Exit".to_string(), callback: Box::new(|| std::process::exit(0)) },
             ],
             focus_index: 0,
             system_font: font,
@@ -112,7 +107,7 @@ impl ContextualMenu {
         self.close();
     }
 
-    pub fn set_items(&mut self, items: Vec<MenuItem>) {
+    pub fn set_items(&mut self, items: Vec<MenuItem<'a>>) {
         self.items = items;
         self.update_content();
     }

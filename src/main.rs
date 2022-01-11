@@ -27,14 +27,14 @@ const FPS: u64 = 60;
 const FRAME_DURATION: u64 = 1000 / FPS; // ms
 
 #[derive(PartialEq, Debug, Clone, Copy)]
-pub enum EditorEvent { Udpate, Redraw, Focus(FocusElement) }
+pub enum EditorEvent { Udpate, Redraw, Focus(FocusElement)}
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum FocusElement { Editor, MainMenu }
 
 
 struct EditorWindowHandler {
-    editor: Editor,
+    editor: Editor<'static>,
     last_editor_size: Vector2<u32>,
     tick_timestamp: Instant,
     mouse_button_pressed: (bool, bool), // (Left, Right)
@@ -145,6 +145,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                     },
                     Some(VirtualKeyCode::Return) => self.editor.new_line(),
                     Some(VirtualKeyCode::Escape) => self.editor.menu.close(),
+                    Some(VirtualKeyCode::Tab) => { if self.editor.modifiers.alt() { self.editor.menu.open() } },
                     _ => { return; },
                 }
             }
@@ -183,12 +184,15 @@ fn main() {
         let filename = &args[1];
         editor.load_file(filename);
     }
-    window.run_loop(EditorWindowHandler {
+
+    let window_handler = EditorWindowHandler {
         editor,
         last_editor_size: (1200, 800).into(),
         tick_timestamp: Instant::now(),
         mouse_button_pressed: (false, false),
         mouse_position: Vector2::new(0., 0.),
         focus: FocusElement::Editor
-    });
+    };
+
+    window.run_loop(window_handler);
 }
