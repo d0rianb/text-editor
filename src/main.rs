@@ -28,9 +28,9 @@ const FRAME_DURATION: u64 = 1000 / FPS; // ms
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum MenuAction {
-    Save(String),
-    SaveTo(String),
     Open(String),
+    Save(String),
+    Void,
     Exit,
     CancelChip,
 }
@@ -74,11 +74,11 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
             },
             EditorEvent::Focus(focus_element) => self.focus = focus_element,
             EditorEvent::MenuItemSelected(item) => match item {
-                MenuAction::Save(path) => println!("Save item selected to {}", path),
-                MenuAction::SaveTo(path) => println!("Save to {}", path),
-                MenuAction::Open(path) => println!("Open {}", path),
+                MenuAction::Void => {  },
                 MenuAction::Exit => helper.terminate_loop(),
                 MenuAction::CancelChip => {},
+                MenuAction::Open(path) => self.editor.load_file(&path),
+                MenuAction::Save(path) => self.editor.save_to_file(&path),
             }
         }
     }

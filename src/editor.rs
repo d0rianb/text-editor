@@ -254,8 +254,8 @@ impl Editor {
 
     pub fn shortcut(&mut self, c: char) {
         match c {
-            's' => self.save_to_file(),
-            'o' => self.load_file("output.txt"),
+            's' => self.save(),
+            'o' => self.load(),
             'u' => self.underline(),
             'c' => self.copy(),
             'v' => self.paste(),
@@ -451,39 +451,53 @@ impl Editor {
         files_with_names
     }
 
-    fn get_save_path(&mut self) -> Option<String> {
-        let recent_files = self.get_recent_files();
-        let mut menu_items = vec![MenuItem { title: "Open ...".into(), action: MenuAction::Open(String::new()), priority: 1 }];
-        for (name, path) in recent_files {
-            menu_items.push(MenuItem::new(&name, MenuAction::Open(path)));
+    /// Ask for the filepath if there is no one specified else save to the current one
+    pub fn save(&mut self) {
+        if let Some(f) = self.filepath.clone() {
+            self.save_to_file(&f);
+        } else {
+            let recent_files = self.get_recent_files();
+            let mut menu_items = vec![MenuItem::new("Save to ...".into(), MenuAction::Void)];
+            for (name, path) in recent_files {
+                menu_items.push(MenuItem::new(&name, MenuAction::Save(path)));
+            }
+            self.menu.open_with(menu_items);
         }
-        self.menu.open_with(menu_items);
-        Some("output.txt".to_string())
     }
 
-    pub fn save_to_file(&mut self) {
-        let filename = if let Some(f) = self.filepath.clone() { f } else if let Some(f) = self.get_save_path() { f } else { String::new() };
-        if filename.len() == 0 { return; }
-        if let Some(filepath) = &self.filepath {
-            if *filepath != filename { self.filepath = Some(filename.clone()); }
-        }
+    /// Save to a specific file
+    pub fn save_to_file(&mut self, filepath: &str) {
+        // TODO: check that the path is valid
+        let valid_filepath = fs::canonicalize(filepath).expect("Invalid filepath");
+        self.filepath = Some(filepath.into());
         let mut data = String::new();
         for (i, line) in (&self.lines).iter().enumerate() {
             data.push_str(&line.buffer.clone().join(""));
             if i + 1 != self.lines.len() { data.push('\n') }
         }
-        fs::write(&filename, &data).expect(&format!("Unable to write file to {}", filename));
+        fs::write(valid_filepath, &data).expect(&format!("Unable to write file to {}", filepath));
     }
 
-    pub fn load_file(&mut self, filename: &str) {
-        self.get_save_path();
-        return;
+    /// Ask for the filepath to load
+    pub fn load(&mut self) {
+        let recent_files = self.get_recent_files();
+        let mut menu_items = vec![MenuItem::new("Open ...".into(), MenuAction::Void)];
+        for (name, path) in recent_files {
+            menu_items.push(MenuItem::new(&name, MenuAction::Open(path)));
+        }
+        self.menu.open_with(menu_items);
+    }
+
+    /// Load a specific path
+    pub fn load_file(&mut self, filepath: &str) {
+        // TODO: check that the path is valid
+        let valid_filepath = fs::canonicalize(filepath).expect("Invalid filepath");
         self.lines = vec![Line::new(Rc::clone(&self.font))];
         self.underline_buffer = vec![];
         self.bold_buffer = vec![];
         self.selection.reset();
-        self.filepath =  self.get_save_path();
-        let file_content = fs::read_to_string(&filename).expect(&format!("Unable to load file to {}", filename));
+        self.filepath = Some(filepath.into());
+        let file_content = fs::read_to_string(&valid_filepath).expect(&format!("Unable to load file to {}", filepath));
         for (i, line) in file_content.split('\n').enumerate() {
             if i < self.lines.len() {
                 self.lines.push(Line::new(Rc::clone(&self.font)));
