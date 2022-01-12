@@ -70,12 +70,13 @@ impl Line {
         let font_formated_string = font.format(&string);
         let mut diff: i32 = 0;
         if string != font_formated_string  {
-            diff = string.len() as i32 - font_formated_string.len() as i32;
+            diff = self.buffer.len() as i32;
             self.buffer = font_formated_string
                 .split("")
                 .map(|c| c.to_string())
                 .filter(|s| s != "")
                 .collect();
+            diff -= self.buffer.len() as i32;
         }
         if font_formated_string != self.previous_string || font.style_changed{
             self.formatted_text_block = font.layout_text(&font_formated_string);

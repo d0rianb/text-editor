@@ -177,9 +177,18 @@ impl Editor {
             let chars: Vec<char> = c.chars().collect();
             return self.shortcut(chars[0]);
         }
-        self.delete_selection();
-        let pos = self.cursor.x;
-        self.get_current_buffer().insert(pos as usize, c);
+        // matching template
+        let mut after = "";
+        for template in [("(", ")"), ("[", "]"), ("{", "}"), ("\"", "\"")] {
+            if &c == template.0 { after = template.1; break }
+        }
+        if after == "" { self.delete_selection(); }
+        let mut pos = if self.selection.is_valid() { self.selection.get_real_start().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
+        self.get_current_buffer().insert(pos.x as usize, c);
+        if after != "" {
+            let after_pos = if self.selection.is_valid() { self.selection.get_real_end().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
+            self.lines[after_pos.y as usize].buffer.insert(after_pos.x as usize + 1, after.into());
+        }
         self.move_cursor_relative(1, 0);
         self.selection.reset();
     }
@@ -207,6 +216,12 @@ impl Editor {
         } else {
             let buffer = self.get_current_buffer();
             assert!(pos <= buffer.len() as i32);
+            // Auto delete the matching template char if there are next to each other - ex: ""
+            if buffer.len() as i32 > pos && buffer.get(pos as usize - 1) == buffer.get(pos as usize) {
+                if ["(", "[", "{", "\""].contains(&buffer.get(pos as usize - 1).unwrap().as_str()) {
+                    buffer.remove(pos as usize);
+                }
+            }
             buffer.remove(pos as usize - 1);
             self.move_cursor_relative(-1, 0);
         }
@@ -269,7 +284,7 @@ impl Editor {
             'D' => { self.select_current_word(); self.delete_selection() },
             '+' | '=' => self.increase_font_size(),
             '-' => self.decrease_font_size(),
-            'n' => self.menu.open(),
+            'n' => self.menu.open_with(vec![]),
             _ => {}
         }
     }
@@ -513,12 +528,10 @@ impl Editor {
         let mut difference = 0;
         for (i, line) in (&mut self.lines).iter_mut().enumerate() {
             let diff = line.update_text_layout();
-            if i as u32 == self.cursor.y {
-                difference = diff;
-            }
+            if i as u32 == self.cursor.y { difference = diff; }
         }
         self.font.borrow_mut().style_changed = false;
-        self.cursor.move_to((self.cursor.x as i32 + difference) as u32, self.cursor.y);
+        self.cursor.move_to((self.cursor.x as i32 - difference) as u32, self.cursor.y);
     }
 
     pub fn update(&mut self, dt: f32) {

@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
+use lazy_static::lazy_static;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -63,6 +64,10 @@ impl ContextualMenu {
 
     pub fn open(&mut self) {
         if self.is_visible { return; }
+        if self.items.len() == 0 {
+            let empty_menu = MenuItem::new("Aucune suggestion", MenuAction::Void);
+            self.set_items(vec![empty_menu]);
+        }
         self.is_visible = true;
         self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(MainMenu));
         let start_width = if let Some(animation_width) = &self.size_animation.x { animation_width.value } else { 0. };
@@ -101,9 +106,13 @@ impl ContextualMenu {
     }
 
     pub fn select(&mut self) {
+        let action = self.items[self.focus_index].action.clone();
         self.event_sender.as_ref().unwrap().send_event(
-            EditorEvent::MenuItemSelected(self.items[self.focus_index].action.clone()));
-        self.close();
+            EditorEvent::MenuItemSelected(action.clone())
+        );
+        if action != MenuAction::Void {
+            self.close();
+        }
     }
 
     pub fn set_items(&mut self, items: Vec<MenuItem>) {
@@ -118,7 +127,7 @@ impl ContextualMenu {
 
     fn width(&self) -> f32 { self.formated_items.iter().map(|ftb| ftb.width()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + 2. * 4. * ITEM_PADDING}
 
-    fn height(&self) -> f32 { (self.formated_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING) * self.items.len() as f32 + 2. * ITEM_PADDING}
+    fn height(&self) -> f32 { (self.formated_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING) * self.items.len() as f32 + ITEM_PADDING}
 
     pub fn computed_width(&self) -> f32 {
         if let Some(animation) = &self.size_animation.x {
@@ -138,7 +147,7 @@ impl ContextualMenu {
 
     pub fn update_content(&mut self) {
         self.items.sort_by(|a, b| b.priority.cmp(&a.priority));
-        self.formated_items = self.items.iter().map(|item| self.system_font.layout_text(&item.title)).to_owned().collect();
+        self.formated_items = self.items.iter().map(|item| self.system_font.layout_text(&item.title)).collect();
     }
 
     pub fn render(&mut self, cursor: &Cursor, camera: &Camera, graphics: &mut Graphics2D) {

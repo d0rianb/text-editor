@@ -171,7 +171,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     }
 
     fn on_keyboard_char(&mut self, helper: &mut WindowHelper<EditorEvent>, unicode_codepoint: char) {
-        if unicode_codepoint >= ' '  && unicode_codepoint <= '~' {
+        if unicode_codepoint >= ' '  && unicode_codepoint <= '~' || unicode_codepoint >= '¡' {
             self.editor.add_char(unicode_codepoint.to_string());
             self.editor.update_text_layout();
             helper.request_redraw();
