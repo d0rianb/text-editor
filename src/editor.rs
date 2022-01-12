@@ -210,6 +210,7 @@ impl Editor {
             buffer.remove(pos as usize - 1);
             self.move_cursor_relative(-1, 0);
         }
+        self.selection.reset();
         self.update_text_layout();
     }
 

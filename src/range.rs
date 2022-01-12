@@ -59,11 +59,7 @@ pub fn vector_max(v1: Vector2<u32>, v2: Vector2<u32>) -> Vector2<u32> {
 }
 
 pub fn vector_min(v1: Vector2<u32>, v2: Vector2<u32>) -> Vector2<u32> {
-    return if vector_max(v1, v2) == v2 {
-        v1
-    } else {
-        v2
-    }
+    return if vector_max(v1, v2) == v2 { v1 } else { v2 }
 }
 
 impl Range {

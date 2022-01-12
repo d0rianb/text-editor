@@ -178,9 +178,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         }
     }
 
-    fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) {
-        self.editor.modifiers = state;
-    }
+    fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) { self.editor.modifiers = state; }
 }
 
 fn main() {

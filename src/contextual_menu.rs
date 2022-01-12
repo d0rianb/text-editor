@@ -142,11 +142,14 @@ impl ContextualMenu {
     }
 
     pub fn render(&mut self, cursor: &Cursor, camera: &Camera, graphics: &mut Graphics2D) {
-        if !self.is_visible && self.size_animation.y.is_none() { return; }
+        if !self.is_visible && self.size_animation.y.is_none() || self.items.len() == 0 { return; }
         let width = self.computed_width();
         let item_height = self.formated_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING;
         let height = self.computed_height();
-        let menu_origin = Vector2::ZERO - camera.position() + cursor.position() + Vector2::new(CURSOR_OFFSET_X, cursor.font.borrow().char_height);
+        let mut menu_origin = Vector2::ZERO - camera.position() + cursor.position() + Vector2::new(CURSOR_OFFSET_X, cursor.font.borrow().char_height);
+        let editor_size = self.system_font.editor_size;
+        if menu_origin.x + width > editor_size.x { menu_origin.x -= menu_origin.x + width - editor_size.x }
+        if menu_origin.y + height > editor_size.y { menu_origin.y -= menu_origin.y + height - editor_size.y }
         let border_color: Color = Color::from_int_rgba(150, 150, 150, 250);
         let highlight_color: Color = Color::from_int_rgba(225, 225, 225, 250);
         const BORDER_WIDTH: f32 = 0.5;
