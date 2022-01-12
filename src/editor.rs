@@ -12,11 +12,16 @@ use speedy2d::window::{ModifiersState, UserEventSender};
 
 use clipboard::ClipboardProvider;
 use clipboard::ClipboardContext;
+use lazy_static::lazy_static;
+use regex::Regex;
+
+extern crate yaml_rust;
+use yaml_rust::{Yaml, YamlLoader};
 
 use crate::cursor::Cursor;
 use crate::camera::Camera;
 use crate::contextual_menu::{ContextualMenu, MenuItem};
-use crate::EditorEvent;
+use crate::{EditorEvent, MenuAction};
 use crate::font::Font;
 use crate::line::Line;
 use crate::range::{Range};
@@ -28,7 +33,7 @@ pub fn clamp<T: Ord>(min: T, x: T, max: T) -> T {
     return cmp::max(min, cmp::min(x, max));
 }
 
-pub struct Editor<'a> {
+pub struct Editor {
     pub lines: Vec<Line>,
     pub cursor: Cursor,
     pub camera: Camera,
@@ -40,10 +45,10 @@ pub struct Editor<'a> {
     pub copy_buffer: Vec<String>,
     pub underline_buffer: Vec<Range>,
     pub bold_buffer: Vec<Range>,
-    pub menu: ContextualMenu<'a>,
+    pub menu: ContextualMenu,
 }
 
-impl<'a> Editor<'a> {
+impl Editor {
     pub fn new(width: f32, height: f32) -> Self {
         let font = Rc::new(RefCell::new(Font::new(
             include_bytes!("../resources/font/CourierRegular.ttf"),
@@ -80,8 +85,8 @@ impl<'a> Editor<'a> {
         let max_y = self.lines.len() as u32 - 1;
         let y = cmp::min(position.y, max_y);
         let line = &self.lines[y as usize];
-        let x =  cmp::max(0, cmp::min(position.x as i32 - (line.alignement_offset / self.font.borrow().char_width + 0.5) as i32, line.buffer.len() as i32));
-        Vector2::new(x as u32, y)
+        let x =  (position.x as i32 - (line.alignement_offset / self.font.borrow().char_width + 0.5) as i32).clamp(0,  line.buffer.len() as i32) as u32;
+        Vector2::new(x, y)
     }
 
     pub fn move_cursor(&mut self, position: Vector2<u32>) {
@@ -167,7 +172,7 @@ impl<'a> Editor<'a> {
         &mut self.get_current_line().buffer
     }
 
-    pub fn add_char(&'a mut self, c: String) {
+    pub fn add_char(&mut self, c: String) {
         if self.modifiers.logo() {
             let chars: Vec<char> = c.chars().collect();
             return self.shortcut(chars[0]);
@@ -233,6 +238,7 @@ impl<'a> Editor<'a> {
             let new_text = " ".repeat(nb_whitespace) + "- ";
             last_line.add_text(&new_text);
             self.cursor.move_to(nb_whitespace as u32 + 2, self.cursor.y + 1);
+            self.menu.open_with(vec![MenuItem::new("Annuler", MenuAction::CancelChip) ]);
         } else {
             self.cursor.move_to(0, self.cursor.y + 1);
         }
@@ -246,7 +252,7 @@ impl<'a> Editor<'a> {
         self.get_valid_cursor_position(pos)
     }
 
-    pub fn shortcut(&'a mut self, c: char) {
+    pub fn shortcut(&mut self, c: char) {
         match c {
             's' => self.save_to_file(),
             'o' => self.load_file("output.txt"),
@@ -425,25 +431,37 @@ impl<'a> Editor<'a> {
         self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw).unwrap();
     }
 
-    fn get_save_path(&'a mut self) -> Option<String> {
-        let recent_files = fs::read_to_string("resources/recent_files.txt").expect("cannot find recent_files");
-        let mut items = vec![MenuItem { title: "Open ...".into(), callback: Box::new(|| ()) }];
-        for path in recent_files.split("\n").filter(|c| *c != "") {
-            // items.push(MenuItem {
-            //     title: path.into(),
-                // callback: Box::new(move || self.set_file_path(path))
-            // })
+    fn get_prefs_key(&self, key: &str) -> Yaml {
+        lazy_static! {
+            static ref PREFS_STR: String = fs::read_to_string("resources/prefs.yaml").expect("Can't find the preference file");
+            static ref DOCS: Vec<Yaml> = YamlLoader::load_from_str(&PREFS_STR).expect("Invalid preferences");
+            static ref PREFS: &'static Yaml = DOCS.get(0).unwrap();
         }
-        self.menu.set_items(items);
-        self.menu.open();
+        PREFS[key].clone()
+    }
+
+    fn get_recent_files(&self) -> Vec<(String, String)> {
+        lazy_static! { static ref NAME_REGEX: Regex = Regex::new(r"([a-zA-Z0-9_-]+).(\w+)$").unwrap(); }
+        let files_yaml = self.get_prefs_key("recent_files");
+        let files: Vec<&str> = files_yaml.as_vec().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
+        let files_with_names: Vec<(String, String)> = files.iter().map(|f| {
+            let file_name: String = NAME_REGEX.captures(*f).unwrap().get(0).unwrap().as_str().to_string();
+            (file_name, String::from(*f))
+        }).collect();
+        files_with_names
+    }
+
+    fn get_save_path(&mut self) -> Option<String> {
+        let recent_files = self.get_recent_files();
+        let mut menu_items = vec![MenuItem { title: "Open ...".into(), action: MenuAction::Open(String::new()), priority: 1 }];
+        for (name, path) in recent_files {
+            menu_items.push(MenuItem::new(&name, MenuAction::Open(path)));
+        }
+        self.menu.open_with(menu_items);
         Some("output.txt".to_string())
     }
 
-    pub fn set_file_path(&mut self, path: &str) {
-       dbg!(path);
-    }
-
-    pub fn save_to_file(&'a mut self) {
+    pub fn save_to_file(&mut self) {
         let filename = if let Some(f) = self.filepath.clone() { f } else if let Some(f) = self.get_save_path() { f } else { String::new() };
         if filename.len() == 0 { return; }
         if let Some(filepath) = &self.filepath {
@@ -457,7 +475,9 @@ impl<'a> Editor<'a> {
         fs::write(&filename, &data).expect(&format!("Unable to write file to {}", filename));
     }
 
-    pub fn load_file(&'a mut self, filename: &str) {
+    pub fn load_file(&mut self, filename: &str) {
+        self.get_save_path();
+        return;
         self.lines = vec![Line::new(Rc::clone(&self.font))];
         self.underline_buffer = vec![];
         self.bold_buffer = vec![];

@@ -9,7 +9,7 @@ use speedy2d::window::UserEventSender;
 
 use crate::camera::Camera;
 use crate::cursor::{Cursor, CURSOR_OFFSET_X};
-use crate::EditorEvent;
+use crate::{EditorEvent, MenuAction};
 use crate::animation::{Animation, EasingFunction};
 use crate::FocusElement::{Editor, MainMenu};
 use crate::font::Font;
@@ -18,20 +18,25 @@ use crate::render_helper::draw_rounded_rectangle;
 const ITEM_PADDING: f32 = 5.;
 const ANIMATION_DURATION: f32 = 100.;
 
-pub struct MenuItem<'a> {
+pub struct MenuItem {
     pub title: String,
-    pub callback: Box<dyn FnMut() + 'a>
+    pub action: MenuAction,
+    pub priority: u32
 }
 
-impl<'a> Debug for MenuItem<'a>{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl Debug for MenuItem {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "MenuItem : {}", self.title)
     }
 }
 
-pub struct ContextualMenu<'a> {
+impl MenuItem {
+    pub fn new(title: &str, action: MenuAction) -> Self { Self { title: title.to_string(), action, priority: 1 } }
+}
+
+pub struct ContextualMenu {
     pub is_visible: bool,
-    items: Vec<MenuItem<'a>>,
+    items: Vec<MenuItem>,
     focus_index: usize,
     system_font: Rc<Font>,
     formated_items: Vec<Rc<FormattedTextBlock>>,
@@ -40,16 +45,11 @@ pub struct ContextualMenu<'a> {
     pub focus_y_animation: Option<Animation>,
 }
 
-impl<'a> ContextualMenu<'a> {
+impl ContextualMenu {
     pub fn new(font: Rc<Font>) -> Self {
         let mut menu = Self {
             is_visible: false,
-            items: vec![
-                MenuItem { title: "Save".to_string(), callback: Box::new(|| ()) },
-                MenuItem { title: "Save to".to_string(), callback: Box::new(|| println!("save to")) },
-                MenuItem { title: "Open >".to_string(), callback: Box::new(|| ()) },
-                MenuItem { title: "Exit".to_string(), callback: Box::new(|| std::process::exit(0)) },
-            ],
+            items: vec![],
             focus_index: 0,
             system_font: font,
             formated_items: vec![],
@@ -61,7 +61,6 @@ impl<'a> ContextualMenu<'a> {
         menu
     }
 
-    #[inline]
     pub fn open(&mut self) {
         if self.is_visible { return; }
         self.is_visible = true;
@@ -74,7 +73,6 @@ impl<'a> ContextualMenu<'a> {
         self.size_animation.y = Some(new_animation_height);
     }
 
-    #[inline]
     pub fn close(&mut self) {
         if !self.is_visible { return; }
         self.focus_index = 0;
@@ -103,13 +101,19 @@ impl<'a> ContextualMenu<'a> {
     }
 
     pub fn select(&mut self) {
-        (self.items[self.focus_index].callback)();
+        self.event_sender.as_ref().unwrap().send_event(
+            EditorEvent::MenuItemSelected(self.items[self.focus_index].action.clone()));
         self.close();
     }
 
-    pub fn set_items(&mut self, items: Vec<MenuItem<'a>>) {
+    pub fn set_items(&mut self, items: Vec<MenuItem>) {
         self.items = items;
         self.update_content();
+    }
+
+    pub fn open_with(&mut self, items: Vec<MenuItem>) {
+        self.set_items(items);
+        self.open();
     }
 
     fn width(&self) -> f32 { self.formated_items.iter().map(|ftb| ftb.width()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + 2. * 4. * ITEM_PADDING}
@@ -133,6 +137,7 @@ impl<'a> ContextualMenu<'a> {
     }
 
     pub fn update_content(&mut self) {
+        self.items.sort_by(|a, b| b.priority.cmp(&a.priority));
         self.formated_items = self.items.iter().map(|item| self.system_font.layout_text(&item.title)).to_owned().collect();
     }
 

@@ -9,3 +9,4 @@
  - cmd-r --> dynamic research
  - support for non monospace font
  - find/replace
+ - preferences

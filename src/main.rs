@@ -26,15 +26,24 @@ use editor::Editor;
 const FPS: u64 = 60;
 const FRAME_DURATION: u64 = 1000 / FPS; // ms
 
-#[derive(PartialEq, Debug, Clone, Copy)]
-pub enum EditorEvent { Udpate, Redraw, Focus(FocusElement)}
+#[derive(PartialEq, Debug, Clone)]
+pub enum MenuAction {
+    Save(String),
+    SaveTo(String),
+    Open(String),
+    Exit,
+    CancelChip,
+}
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum FocusElement { Editor, MainMenu }
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum EditorEvent { Udpate, Redraw, Focus(FocusElement), MenuItemSelected(MenuAction)}
+
 
 struct EditorWindowHandler {
-    editor: Editor<'static>,
+    editor: Editor,
     last_editor_size: Vector2<u32>,
     tick_timestamp: Instant,
     mouse_button_pressed: (bool, bool), // (Left, Right)
@@ -63,7 +72,14 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 self.editor.update(self.tick_timestamp.elapsed().as_millis() as f32);
                 self.tick_timestamp = Instant::now();
             },
-            EditorEvent::Focus(focus_element) => self.focus = focus_element
+            EditorEvent::Focus(focus_element) => self.focus = focus_element,
+            EditorEvent::MenuItemSelected(item) => match item {
+                MenuAction::Save(path) => println!("Save item selected to {}", path),
+                MenuAction::SaveTo(path) => println!("Save to {}", path),
+                MenuAction::Open(path) => println!("Open {}", path),
+                MenuAction::Exit => helper.terminate_loop(),
+                MenuAction::CancelChip => {},
+            }
         }
     }
 
