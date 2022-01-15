@@ -3,6 +3,7 @@ use speedy2d::window::UserEventSender;
 use crate::EditorEvent;
 
 #[allow(dead_code)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum EasingFunction {
     Linear,
     SmoothStep,
@@ -34,8 +35,9 @@ pub struct Animation {
     pub from: f32,
     pub to: f32,
     pub duration: f32,
+    easing: EasingFunction,
     #[derivative(Debug = "ignore")]
-    pub easing: Box<dyn Fn(f32) -> f32>,
+    easing_fn: Box<dyn Fn(f32)-> f32 + 'static>,
     pub value: f32,
     pub has_started: bool,
     pub is_paused: bool,
@@ -44,16 +46,23 @@ pub struct Animation {
     speed: f32,
     pub last_t: f32,
     #[derivative(Debug = "ignore")]
-    event_sender: Option<UserEventSender<EditorEvent>>,
+    pub event_sender: UserEventSender<EditorEvent>,
+}
+
+impl Clone for Animation {
+    fn clone(&self) -> Self {
+        Self::new(self.from, self.to, self.duration, self.easing, self.event_sender.clone())
+    }
 }
 
 impl Animation {
-    pub fn new(from: f32, to: f32, duration: f32, easing: EasingFunction, aes: Option<UserEventSender<EditorEvent>> ) -> Self {
+    pub fn new(from: f32, to: f32, duration: f32, easing: EasingFunction, es: UserEventSender<EditorEvent> ) -> Self {
         Self {
             from,
             to,
             duration,
-            easing: get_easing_fn(easing),
+            easing,
+            easing_fn: get_easing_fn(easing),
             value: from,
             has_started: false,
             is_paused: false,
@@ -61,7 +70,7 @@ impl Animation {
             is_reversed: false,
             speed: (to - from).abs() as f32 / duration,
             last_t: 0.,
-            event_sender: aes,
+            event_sender: es,
         }
     }
 
@@ -114,10 +123,8 @@ impl Animation {
             return;
         }
         self.last_t = t;
-        self.value = self.from + (self.to - self.from) * (self.easing)(t);
-        if let Some(aes) = &self.event_sender {
-            aes.send_event(EditorEvent::Redraw).unwrap();
-        }
+        self.value = self.from + (self.to - self.from) * (self.easing_fn)(t);
+        self.event_sender.send_event(EditorEvent::Redraw).unwrap();
     }
 
     #[inline]
@@ -127,8 +134,6 @@ impl Animation {
     }
 
     pub fn on_finish(&self) {
-        if let Some(es) = &self.event_sender {
-            es.send_event(EditorEvent::Redraw).unwrap();
-        }
+        self.event_sender.send_event(EditorEvent::Redraw).unwrap();
     }
 }

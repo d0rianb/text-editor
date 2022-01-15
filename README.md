@@ -8,7 +8,7 @@ It's focus on __speed__ and __efficiency__. The editor uses __animations__ to ma
 For now, the editor look like this :
 ![App Screenshot](resources/img/screenshot.png)
 
-This editor is very light (1.5 Mo vs 37 for Vim) and doesn't consume much RAM or CPU while running thanks to render cycle optimization.
+This editor is very light (1.5 Mo vs 37 Mo for Vim) and doesn't consume much RAM or CPU while running thanks to render cycle optimization.
 
 
 To run the projet (in debug mode) :

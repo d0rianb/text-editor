@@ -18,10 +18,10 @@ use regex::Regex;
 extern crate yaml_rust;
 use yaml_rust::{Yaml, YamlLoader};
 
-use crate::cursor::Cursor;
+use crate::cursor::{Cursor, CURSOR_OFFSET_X};
 use crate::camera::Camera;
 use crate::contextual_menu::{ContextualMenu, MenuItem};
-use crate::{EditorEvent, MenuAction};
+use crate::{EditorEvent, MenuAction, MenuId};
 use crate::font::Font;
 use crate::line::Line;
 use crate::range::{Range};
@@ -38,6 +38,7 @@ pub struct Editor {
     pub cursor: Cursor,
     pub camera: Camera,
     pub font: Rc<RefCell<Font>>,
+    pub system_font: Rc<RefCell<Font>>,
     pub modifiers : ModifiersState,
     pub filepath: Option<String>,
     pub event_sender: Option<UserEventSender<EditorEvent>>,
@@ -56,12 +57,13 @@ impl Editor {
             width - EDITOR_PADDING*2.,
             height - EDITOR_OFFSET_TOP - EDITOR_PADDING*2.,
         )));
-        let system_font = Rc::new(Font::new(include_bytes!("../resources/font/Roboto-Regular.ttf"), width, height));
+        let system_font = Rc::new(RefCell::new(Font::new(include_bytes!("../resources/font/Roboto-Regular.ttf"), width, height)));
         Self {
             cursor: Cursor::new(0, 0, Rc::clone(&font)),
             camera: Camera::new(width - EDITOR_PADDING*2., height - EDITOR_OFFSET_TOP - EDITOR_PADDING*2.),
             lines: vec![Line::new(Rc::clone(&font))],
             font,
+            system_font: system_font.clone(),
             modifiers: ModifiersState::default(),
             filepath: Option::None,
             event_sender: Option::None,
@@ -79,7 +81,10 @@ impl Editor {
         self.menu.event_sender = es.clone();
     }
 
-    pub fn on_resize(&mut self, size: Vector2<u32>) { self.font.borrow_mut().on_resize(size) }
+    pub fn on_resize(&mut self, size: Vector2<u32>) {
+        self.system_font.borrow_mut().on_resize(size);
+        self.font.borrow_mut().on_resize(size);
+    }
 
     fn get_valid_cursor_position(&mut self, position: Vector2<u32>) -> Vector2<u32> {
         let max_y = self.lines.len() as u32 - 1;
@@ -183,7 +188,7 @@ impl Editor {
             if &c == template.0 { after = template.1; break }
         }
         if after == "" { self.delete_selection(); }
-        let mut pos = if self.selection.is_valid() { self.selection.get_real_start().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
+        let pos = if self.selection.is_valid() { self.selection.get_real_start().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
         self.get_current_buffer().insert(pos.x as usize, c);
         if after != "" {
             let after_pos = if self.selection.is_valid() { self.selection.get_real_end().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
@@ -260,6 +265,12 @@ impl Editor {
         }
     }
 
+    pub fn cancel_chip(&mut self) {
+        self.get_current_line().empty();
+        self.update_text_layout();
+        self.cursor.move_to(0, self.cursor.y);
+    }
+
     pub fn get_mouse_position_index(&mut self, position: Vector2<f32>) -> Vector2<u32> {
         let pos = Vector2::new(
             ((position.x as f32 + self.camera.computed_x()) / self.font.borrow().char_width + 0.5) as u32,
@@ -284,7 +295,7 @@ impl Editor {
             'D' => { self.select_current_word(); self.delete_selection() },
             '+' | '=' => self.increase_font_size(),
             '-' => self.decrease_font_size(),
-            'n' => self.menu.open_with(vec![]),
+            'n' => self.contextual_submenu_test(),
             _ => {}
         }
     }
@@ -348,6 +359,49 @@ impl Editor {
         self.move_cursor(Vector2::new(0, self.cursor.y + 1))
     }
 
+    pub fn toggle_contextual_menu(&mut self) {
+        let mut items = vec![];
+        if self.selection.is_valid() {
+            for i in [
+                MenuItem::new("Bold", MenuAction::Bold),
+                MenuItem::new("Underline", MenuAction::Underline),
+            ] { items.push(i) }
+        }
+        self.menu.open_with(items);
+    }
+
+    pub fn get_menu(&mut self, id: MenuId) -> &mut ContextualMenu {
+        // (0, -1, -1, -1)
+        // let mut menu = &mut self.menu;
+        // for level in id.iter() {
+        //     if *level <= -1 { break; }
+        //     let mut menu_item = menu.items.get_mut(*level as usize);
+        //     if let Some(item) = menu_item {
+        //         if let Some(sub_menu) = &mut item.sub_menu { menu = sub_menu } else { break; }
+        //     } else { break; }
+        // }
+        if id[0] <= -1 { &mut self.menu } else { self.menu.items[id[0] as usize].sub_menu.as_mut().unwrap() }
+    }
+
+    fn contextual_submenu_test(&mut self) {
+        let mut sub_menu = ContextualMenu::new_with_items(self.system_font.clone(), vec![
+            MenuItem::new("SubMenu 1", MenuAction::Void),
+            MenuItem::new("SubMenu 2", MenuAction::Void),
+            MenuItem::new("SubMenu 3", MenuAction::Void),
+            MenuItem::new("SubMenu 4", MenuAction::Void),
+        ]);
+        sub_menu.event_sender = self.event_sender.clone();
+        self.menu.open_with(vec![
+            MenuItem::new("Menu 1", MenuAction::Void),
+            MenuItem::new("Menu 1", MenuAction::Void),
+            MenuItem {
+               title: "Menu 2 >".to_string(),
+               action: MenuAction::OpenSubMenu,
+               sub_menu: Some(sub_menu)
+           }
+        ]);
+    }
+
     /// Add a range to a buffer according to the underline/bold rules
     fn add_range_to_buffer(range: Range, buffer: &mut Vec<Range>) {
         if !range.is_valid() { return; }
@@ -371,11 +425,11 @@ impl Editor {
         buffer.push(range);
     }
 
-    fn underline(&mut self) {
+    pub fn underline(&mut self) {
         Self::add_range_to_buffer(self.selection.clone(),  &mut self.underline_buffer);
     }
 
-    fn bold(&mut self) {
+    pub fn bold(&mut self) {
         Self::add_range_to_buffer(self.selection.clone(),  &mut self.bold_buffer);
     }
 
@@ -535,11 +589,18 @@ impl Editor {
     }
 
     pub fn update(&mut self, dt: f32) {
-        let animations = [
+        let mut animations = vec![
             &mut self.cursor.animation.x, &mut self.cursor.animation.y,
             &mut self.camera.animation.x,  &mut self.camera.animation.y,
             &mut self.menu.size_animation.x,  &mut self.menu.size_animation.y, &mut self.menu.focus_y_animation
         ];
+        for items in self.menu.items.iter_mut() {
+            if let Some(sub_menu) = &mut items.sub_menu {
+                animations.push(&mut sub_menu.size_animation.x);
+                animations.push(&mut sub_menu.size_animation.y);
+                animations.push(&mut sub_menu.focus_y_animation);
+            }
+        }
         for animation in animations {
             if let Some(anim) = animation {
                 if !anim.has_started {
@@ -597,7 +658,8 @@ impl Editor {
         // self.camera._render(graphics);
         self.cursor.render(&line_camera, graphics);
         self.selection.render(Rc::clone(&self.font), &self.lines, &self.camera, graphics);
-        self.menu.render(&self.cursor, &self.camera, graphics);
+        let menu_position = self.cursor.position() - self.camera.position() + Vector2::new(CURSOR_OFFSET_X, self.font.borrow().char_height);
+        self.menu.render(menu_position, graphics);
         graphics.draw_rectangle( // draw the title bar
             Rectangle::new(
                 Vector2::new(0., 0.),

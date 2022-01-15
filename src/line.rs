@@ -41,6 +41,11 @@ impl Line {
         }
     }
 
+    pub fn empty(&mut self) {
+        let length = self.buffer.len();
+        self.buffer.drain(0 .. length - 1);
+    }
+
     pub fn set_alignement(&mut self, alignement: TextAlignment) {
         let editor_width = self.font.borrow().editor_size.x;
         self.alignement_offset = match alignement {

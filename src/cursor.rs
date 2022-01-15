@@ -75,7 +75,7 @@ impl Cursor {
         let start_x = if let Some(animation_x) = &self.animation.x { animation_x.value } else { self.computed_x() };
         let start_y = if let Some(animation_y) = &self.animation.y { animation_y.value } else { self.computed_y() };
         let duration = 100.;
-        let es = self.event_sender.clone();
+        let es = self.event_sender.clone().unwrap();
         let new_animation_x = Animation::new(start_x, x as f32 * self.font.borrow().char_width, duration, EasingFunction::SmootherStep, es.clone());
         let new_animation_y = Animation::new(start_y, y as f32 * self.font.borrow().char_height, duration, EasingFunction::SmootherStep, es);
         self.animation.x = Some(new_animation_x);

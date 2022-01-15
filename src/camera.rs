@@ -8,6 +8,7 @@ use crate::cursor::Cursor;
 use crate::editor::{EDITOR_OFFSET_TOP, EDITOR_PADDING};
 use crate::EditorEvent;
 
+#[derive(Clone)]
 pub struct Camera {
     x: f32,
     y: f32,
@@ -29,6 +30,19 @@ impl Camera {
             width,
             height,
             safe_zone_size: 30.0,
+            animation: Vector2 { x: Option::None, y: Option::None },
+            event_sender: Option::None
+        }
+    }
+
+    #[allow(non_snake_case)]
+    pub fn from_real_origin(x: f32, y: f32) -> Self {
+        Self {
+            x: x - INITIAL_X,
+            y: y - INITIAL_Y,
+            width: 0.,
+            height: 0.,
+            safe_zone_size: 0.0,
             animation: Vector2 { x: Option::None, y: Option::None },
             event_sender: Option::None
         }
@@ -92,7 +106,7 @@ impl Camera {
         let start_x = if let Some(animation_x) = &self.animation.x { animation_x.value } else { self.computed_x() };
         let start_y = if let Some(animation_y) = &self.animation.y { animation_y.value } else { self.computed_y() };
         let duration = 100.;
-        let es = self.event_sender.clone();
+        let es = self.event_sender.clone().unwrap();
         let new_animation_x = Animation::new(start_x, x, duration, EasingFunction::SmootherStep, es.clone());
         let new_animation_y = Animation::new(start_y, y, duration, EasingFunction::SmootherStep, es);
         self.animation.x = Some(new_animation_x);
