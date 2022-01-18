@@ -25,6 +25,7 @@ use crate::{EditorEvent, MenuAction, MenuId};
 use crate::font::Font;
 use crate::line::Line;
 use crate::range::{Range};
+use crate::editable::Editable;
 
 pub const EDITOR_PADDING: f32 = 10.;
 pub const EDITOR_OFFSET_TOP: f32 = 55.;
@@ -47,6 +48,267 @@ pub struct Editor {
     pub underline_buffer: Vec<Range>,
     pub bold_buffer: Vec<Range>,
     pub menu: ContextualMenu,
+}
+
+impl Editable for Editor {
+    fn add_char(&mut self, c: String) {
+        if self.modifiers.logo() {
+            let chars: Vec<char> = c.chars().collect();
+            return self.shortcut(chars[0]);
+        }
+        // matching template
+        let mut after = "";
+        for template in [("(", ")"), ("[", "]"), ("{", "}"), ("\"", "\"")] {
+            if &c == template.0 { after = template.1; break }
+        }
+        if after == "" { self.delete_selection(); }
+        let pos = if self.selection.is_valid() { self.selection.get_real_start().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
+        self.get_current_buffer().insert(pos.x as usize, c);
+        if after != "" {
+            let after_pos = if self.selection.is_valid() { self.selection.get_real_end().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
+            self.lines[after_pos.y as usize].buffer.insert(after_pos.x as usize + 1, after.into());
+        }
+        self.move_cursor_relative(1, 0);
+        self.selection.reset();
+    }
+
+    fn delete_char(&mut self) {
+        if self.modifiers.alt() || self.modifiers.logo()  {
+            self.begin_selection();
+            self.move_cursor_relative(-1, 0);
+            self.end_selection();
+        }
+        if self.selection.is_valid() {
+            self.delete_selection();
+            return;
+        }
+        let pos = self.cursor.x as i32;
+        let row = self.cursor.y;
+        if pos == 0 {
+            if row == 0 { return; } // The first line should never be deleted
+            let buffer = self.get_current_buffer().clone();
+            let previous_buffer = &mut self.lines[row as usize - 1].buffer;
+            let previous_line_buffer_previous_size = previous_buffer.len() as u32;
+            buffer.iter().for_each(|c| previous_buffer.push(c.clone()));
+            self.cursor.move_to(previous_line_buffer_previous_size, self.cursor.y - 1);
+            self.lines.remove(row as usize);
+        } else {
+            let buffer = self.get_current_buffer();
+            assert!(pos <= buffer.len() as i32);
+            // Auto delete the matching template char if there are next to each other - ex: ""
+            if buffer.len() as i32 > pos && buffer.get(pos as usize - 1) == buffer.get(pos as usize) {
+                if ["(", "[", "{", "\""].contains(&buffer.get(pos as usize - 1).unwrap().as_str()) {
+                    buffer.remove(pos as usize);
+                }
+            }
+            buffer.remove(pos as usize - 1);
+            self.move_cursor_relative(-1, 0);
+        }
+        self.selection.reset();
+        self.update_text_layout();
+    }
+
+    fn move_cursor(&mut self, position: Vector2<u32>) {
+        assert!(self.lines.len() > 0);
+        let pos = self.get_valid_cursor_position(position);
+        if pos.x != self.cursor.x || pos.y != self.cursor.y {
+            self.cursor.move_to(pos.x, pos.y);
+        }
+    }
+
+    fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
+        let max_y = self.lines.len() as i32 - 1;
+        let mut new_x = (self.cursor.x as i32 + rel_x) as i32;
+        let mut new_y = (self.cursor.y as i32 + rel_y).clamp(0, max_y);
+
+        if self.modifiers.shift() && self.selection.start.is_none() {
+            self.selection.start(Vector2::new(self.cursor.x, self.cursor.y));
+        }
+
+        if self.modifiers.alt() {
+            // Move to the next word
+            let (start, end) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
+            if rel_x < 0 && start != self.cursor.x  {
+                new_x = start as i32;
+            } else if rel_x > 0 && end != self.cursor.x  {
+                new_x = end as i32;
+            }
+        } else if self.modifiers.logo() {
+            if rel_x < 0  {
+                new_x = 0;
+            } else if rel_x > 0 {
+                new_x = self.lines[self.cursor.y as usize].buffer.len() as i32;
+            }
+            if rel_y < 0 {
+                new_y = 0;
+            } else if rel_y > 0 {
+                new_y = self.lines.len() as i32 - 1;
+            }
+        }
+
+        if new_x < 0 {
+            // Go to line before
+            if self.cursor.y == 0 { return; }
+            let previous_line_buffer_size = self.lines[self.cursor.y as usize - 1].buffer.len() as u32;
+            self.cursor.move_to(previous_line_buffer_size, self.cursor.y - 1);
+        } else if new_x as usize > self.get_current_buffer().len() {
+            // Go to line after
+            if self.cursor.y as usize >= self.lines.len() - 1 {return; }
+            self.cursor.move_to(0, self.cursor.y + 1);
+        } else {
+            // Classic move inside a line
+            // Check if x if inside new_y buffer limits
+            let new_buffer_len = self.lines[new_y as usize].buffer.len() as i32;
+            if new_x >= new_buffer_len {
+                self.cursor.move_to(new_buffer_len as u32, new_y as u32);
+            } else {
+                self.cursor.move_to(new_x as u32, new_y as u32);
+            }
+        }
+        // Update selection
+        if self.modifiers.shift() {
+            self.selection.end(Vector2::new(self.cursor.x, self.cursor.y));
+        } else if (rel_x.abs() > 0 || rel_y.abs() > 0) && self.selection.is_valid() {
+            self.selection.reset();
+        }
+        self.update_camera();
+    }
+
+    fn shortcut(&mut self, c: char) {
+        match c {
+            's' => self.save(),
+            'o' => self.load(),
+            'u' => self.underline(),
+            'c' => self.copy(),
+            'v' => self.paste(),
+            'x' => { self.copy(); self.delete_selection() },
+            'a' => self.select_all(),
+            'l' => self.select_current_line(),
+            'L' => { self.select_current_line(); self.delete_selection() },
+            'w' | 'q' => std::process::exit(0),
+            'd' => self.select_current_word(),
+            'D' => { self.select_current_word(); self.delete_selection() },
+            '+' | '=' => self.increase_font_size(),
+            '-' => self.decrease_font_size(),
+            'n' => self.contextual_submenu_test(),
+            _ => {}
+        }
+    }
+
+    fn begin_selection(&mut self) {
+        self.selection.start((self.cursor.x, self.cursor.y).into());
+    }
+
+    fn end_selection(&mut self) {
+        self.selection.end((self.cursor.x, self.cursor.y).into());
+    }
+
+    fn update_selection(&mut self, position: Vector2<f32>) {
+        let mouse_position = self.get_mouse_position_index(position);
+        self.selection.end(mouse_position);
+        self.move_cursor(mouse_position);
+    }
+
+    fn delete_selection(&mut self) {
+        if self.selection.is_valid() {
+            let initial_i = cmp::min(self.selection.start.unwrap().y, self.selection.end.unwrap().y) as usize;
+            let lines_indices = self.selection.get_lines_index(&self.lines);
+            for (i, indices) in lines_indices.iter().enumerate() {
+                let start = cmp::min(indices.0, indices.1) as usize;
+                let end = cmp::max(indices.0, indices.1) as usize;
+                &self.lines[initial_i + i].buffer.drain(start .. end);
+            }
+            for i in 0 .. lines_indices.len() {
+                let index = initial_i + lines_indices.len() - i - 1;
+                if self.lines[index].buffer.len() == 0 && self.lines.len() > 1 {
+                    self.lines.remove(index);
+                }
+            }
+            let selection_start = self.selection.get_real_start().unwrap();
+            self.move_cursor(Vector2::new(selection_start.x, selection_start.y));
+            self.selection.reset();
+        }
+    }
+
+    fn get_mouse_position_index(&mut self, position: Vector2<f32>) -> Vector2<u32> {
+        let pos = Vector2::new(
+            ((position.x as f32 + self.camera.computed_x()) / self.font.borrow().char_width + 0.5) as u32,
+            ((position.y as f32 + self.camera.computed_y()) / self.font.borrow().char_height) as u32,
+        );
+        self.get_valid_cursor_position(pos)
+    }
+
+    fn get_valid_cursor_position(&mut self, position: Vector2<u32>) -> Vector2<u32> {
+        let max_y = self.lines.len() as u32 - 1;
+        let y = cmp::min(position.y, max_y);
+        let line = &self.lines[y as usize];
+        let x =  (position.x as i32 - (line.alignement_offset / self.font.borrow().char_width + 0.5) as i32).clamp(0,  line.buffer.len() as i32) as u32;
+        Vector2::new(x, y)
+    }
+
+    fn select_current_word(&mut self) {
+        let (start, end) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
+        self.selection = Range::new(
+            Vector2::new(start, self.cursor.y),
+            Vector2::new(end, self.cursor.y),
+        )
+    }
+
+    fn select_all(&mut self) {
+        let last_line_length = self.lines.last().unwrap().buffer.len() as u32;
+        self.selection.start(Vector2::ZERO);
+        self.selection.end(Vector2::new(last_line_length, self.lines.len() as u32 - 1));
+    }
+
+    fn select_current_line(&mut self) {
+        let line = &self.lines[self.cursor.y as usize];
+        let line_selection = Range::new(
+            Vector2::new(0, self.cursor.y),
+            Vector2::new(line.buffer.len() as u32, self.cursor.y)
+        );
+        self.selection.add(line_selection);
+        self.move_cursor(Vector2::new(0, self.cursor.y + 1))
+    }
+
+    fn copy(&mut self) {
+        if !self.selection.is_valid() { return; }
+        let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
+        self.copy_buffer = vec![];
+        let lines_index = self.selection.get_lines_index(&self.lines);
+        let initial_y = self.selection.get_start_y();
+        for (i, (start, end)) in lines_index.iter().enumerate() {
+            let y = initial_y as usize + i;
+            let mut text = String::new();
+            for j in *start .. *end {
+                let buffer_text = self.lines[y].buffer.get(j as usize);
+                if let Some(bt) = buffer_text { text.push_str(bt); }
+            }
+            text.push_str("\n");
+            self.copy_buffer.push(text);
+        }
+        ctx.set_contents(self.copy_buffer.join("")).unwrap();
+    }
+
+    fn paste(&mut self) {
+        if self.selection.is_valid() { self.delete_selection(); }
+        let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
+        let clipboard_content = ctx.get_contents();
+        dbg!(clipboard_content);
+        // TODO: match on clipboard content
+        if self.copy_buffer.is_empty() { return; }
+        let buffer_text = self.copy_buffer.join("");
+        let mut lines = buffer_text.split("\n").filter(|c| *c != "");
+        let mut text = lines.next();
+        while text.is_some() {
+            self.lines[self.cursor.y as usize].add_text(text.unwrap());
+            self.move_cursor_relative(text.unwrap().len() as i32, 0);
+            text = lines.next();
+            if text.is_some() {
+                self.lines.push(Line::new(Rc::clone(&self.font)));
+                self.move_cursor_relative(0, 1);
+            }
+        }
+    }
 }
 
 impl Editor {
@@ -103,9 +365,9 @@ impl Editor {
     }
 
     pub fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
-        let max_y = self.lines.len() as u32 - 1;
+        let max_y = self.lines.len() as i32 - 1;
         let mut new_x = (self.cursor.x as i32 + rel_x) as i32;
-        let mut new_y = clamp(0, self.cursor.y as i32 + rel_y, max_y as i32);
+        let mut new_y = (self.cursor.y as i32 + rel_y).clamp(0, max_y);
 
         if self.modifiers.shift() && self.selection.start.is_none() {
             self.selection.start(Vector2::new(self.cursor.x, self.cursor.y));
@@ -177,63 +439,6 @@ impl Editor {
         &mut self.get_current_line().buffer
     }
 
-    pub fn add_char(&mut self, c: String) {
-        if self.modifiers.logo() {
-            let chars: Vec<char> = c.chars().collect();
-            return self.shortcut(chars[0]);
-        }
-        // matching template
-        let mut after = "";
-        for template in [("(", ")"), ("[", "]"), ("{", "}"), ("\"", "\"")] {
-            if &c == template.0 { after = template.1; break }
-        }
-        if after == "" { self.delete_selection(); }
-        let pos = if self.selection.is_valid() { self.selection.get_real_start().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
-        self.get_current_buffer().insert(pos.x as usize, c);
-        if after != "" {
-            let after_pos = if self.selection.is_valid() { self.selection.get_real_end().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
-            self.lines[after_pos.y as usize].buffer.insert(after_pos.x as usize + 1, after.into());
-        }
-        self.move_cursor_relative(1, 0);
-        self.selection.reset();
-    }
-
-    pub fn delete_char(&mut self) {
-        if self.modifiers.alt() || self.modifiers.logo()  {
-            self.begin_selection();
-            self.move_cursor_relative(-1, 0);
-            self.end_selection();
-        }
-        if self.selection.is_valid() {
-            self.delete_selection();
-            return;
-        }
-        let pos = self.cursor.x as i32;
-        let row = self.cursor.y;
-        if pos == 0 {
-            if row == 0 { return; } // The first line should never be deleted
-            let buffer = self.get_current_buffer().clone();
-            let previous_buffer = &mut self.lines[row as usize - 1].buffer;
-            let previous_line_buffer_previous_size = previous_buffer.len() as u32;
-            buffer.iter().for_each(|c| previous_buffer.push(c.clone()));
-            self.cursor.move_to(previous_line_buffer_previous_size, self.cursor.y - 1);
-            self.lines.remove(row as usize);
-        } else {
-            let buffer = self.get_current_buffer();
-            assert!(pos <= buffer.len() as i32);
-            // Auto delete the matching template char if there are next to each other - ex: ""
-            if buffer.len() as i32 > pos && buffer.get(pos as usize - 1) == buffer.get(pos as usize) {
-                if ["(", "[", "{", "\""].contains(&buffer.get(pos as usize - 1).unwrap().as_str()) {
-                    buffer.remove(pos as usize);
-                }
-            }
-            buffer.remove(pos as usize - 1);
-            self.move_cursor_relative(-1, 0);
-        }
-        self.selection.reset();
-        self.update_text_layout();
-    }
-
     pub fn new_line(&mut self) {
         self.delete_selection();
         let mut new_line = Line::new(Rc::clone(&self.font));
@@ -271,93 +476,6 @@ impl Editor {
         self.cursor.move_to(0, self.cursor.y);
     }
 
-    pub fn get_mouse_position_index(&mut self, position: Vector2<f32>) -> Vector2<u32> {
-        let pos = Vector2::new(
-            ((position.x as f32 + self.camera.computed_x()) / self.font.borrow().char_width + 0.5) as u32,
-            ((position.y as f32 + self.camera.computed_y()) / self.font.borrow().char_height) as u32,
-        );
-        self.get_valid_cursor_position(pos)
-    }
-
-    pub fn shortcut(&mut self, c: char) {
-        match c {
-            's' => self.save(),
-            'o' => self.load(),
-            'u' => self.underline(),
-            'c' => self.copy(),
-            'v' => self.paste(),
-            'x' => { self.copy(); self.delete_selection() },
-            'a' => self.select_all(),
-            'l' => self.select_current_line(),
-            'L' => { self.select_current_line(); self.delete_selection() },
-            'w' | 'q' => std::process::exit(0),
-            'd' => self.select_current_word(),
-            'D' => { self.select_current_word(); self.delete_selection() },
-            '+' | '=' => self.increase_font_size(),
-            '-' => self.decrease_font_size(),
-            'n' => self.contextual_submenu_test(),
-            _ => {}
-        }
-    }
-
-    pub fn begin_selection(&mut self) {
-        self.selection.start((self.cursor.x, self.cursor.y).into());
-    }
-
-    pub fn end_selection(&mut self) {
-        self.selection.end((self.cursor.x, self.cursor.y).into());
-    }
-
-    pub fn update_selection(&mut self, position: Vector2<f32>) {
-        let mouse_position = self.get_mouse_position_index(position);
-        self.selection.end(mouse_position);
-        self.move_cursor(mouse_position);
-    }
-
-    fn delete_selection(&mut self) {
-        if self.selection.is_valid() {
-            let initial_i = cmp::min(self.selection.start.unwrap().y, self.selection.end.unwrap().y) as usize;
-            let lines_indices = self.selection.get_lines_index(&self.lines);
-            for (i, indices) in lines_indices.iter().enumerate() {
-                let start = cmp::min(indices.0, indices.1) as usize;
-                let end = cmp::max(indices.0, indices.1) as usize;
-                &self.lines[initial_i + i].buffer.drain(start .. end);
-            }
-            for i in 0 .. lines_indices.len() {
-                let index = initial_i + lines_indices.len() - i - 1;
-                if self.lines[index].buffer.len() == 0 && self.lines.len() > 1 {
-                    self.lines.remove(index);
-                }
-            }
-            let selection_start = self.selection.get_real_start().unwrap();
-            self.move_cursor(Vector2::new(selection_start.x, selection_start.y));
-            self.selection.reset();
-        }
-    }
-
-    fn select_current_word(&mut self) {
-        let (start, end) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
-        self.selection = Range::new(
-            Vector2::new(start, self.cursor.y),
-            Vector2::new(end, self.cursor.y),
-        )
-    }
-
-    fn select_all(&mut self) {
-        let last_line_length = self.lines.last().unwrap().buffer.len() as u32;
-        self.selection.start(Vector2::ZERO);
-        self.selection.end(Vector2::new(last_line_length, self.lines.len() as u32 - 1));
-    }
-
-    fn select_current_line(&mut self) {
-        let line = &self.lines[self.cursor.y as usize];
-        let line_selection = Range::new(
-            Vector2::new(0, self.cursor.y),
-            Vector2::new(line.buffer.len() as u32, self.cursor.y)
-        );
-        self.selection.add(line_selection);
-        self.move_cursor(Vector2::new(0, self.cursor.y + 1))
-    }
 
     pub fn toggle_contextual_menu(&mut self) {
         let mut items = vec![];
@@ -444,46 +562,6 @@ impl Editor {
             }
         } else {
             self.get_current_line().set_alignement(alignement);
-        }
-    }
-
-    fn copy(&mut self) {
-        if !self.selection.is_valid() { return; }
-        let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
-        self.copy_buffer = vec![];
-        let lines_index = self.selection.get_lines_index(&self.lines);
-        let initial_y = self.selection.get_start_y();
-        for (i, (start, end)) in lines_index.iter().enumerate() {
-            let y = initial_y as usize + i;
-            let mut text = String::new();
-            for j in *start .. *end {
-                let buffer_text = self.lines[y].buffer.get(j as usize);
-                if let Some(bt) = buffer_text { text.push_str(bt); }
-            }
-            text.push_str("\n");
-            self.copy_buffer.push(text);
-        }
-        ctx.set_contents(self.copy_buffer.join("")).unwrap();
-    }
-
-    fn paste(&mut self) {
-        if self.selection.is_valid() { self.delete_selection(); }
-        let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
-        let clipboard_content = ctx.get_contents();
-        dbg!(clipboard_content);
-        // TODO: match on clipboard content
-        if self.copy_buffer.is_empty() { return; }
-        let buffer_text = self.copy_buffer.join("");
-        let mut lines = buffer_text.split("\n").filter(|c| *c != "");
-        let mut text = lines.next();
-        while text.is_some() {
-            self.lines[self.cursor.y as usize].add_text(text.unwrap());
-            self.move_cursor_relative(text.unwrap().len() as i32, 0);
-            text = lines.next();
-            if text.is_some() {
-                self.lines.push(Line::new(Rc::clone(&self.font)));
-                self.move_cursor_relative(0, 1);
-            }
         }
     }
 

@@ -1,15 +1,17 @@
 #[macro_use]
 extern crate derivative;
 
-mod animation;
-mod cursor;
 mod editor;
+mod cursor;
 mod font;
 mod line;
+mod animation;
 mod range;
 mod camera;
 mod contextual_menu;
 mod render_helper;
+mod input;
+mod editable;
 
 use std::thread;
 use std::env;
@@ -23,6 +25,7 @@ use speedy2d::font::TextAlignment;
 
 use editor::Editor;
 use crate::animation::Animation;
+use crate::editable::Editable;
 
 const FPS: u64 = 60;
 const FRAME_DURATION: u64 = 1000 / FPS; // ms
@@ -141,42 +144,26 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
 
     fn on_key_down(&mut self, helper: &mut WindowHelper<EditorEvent>, virtual_key_code: Option<VirtualKeyCode>, _scancode: KeyScancode) {
         let modifiers = self.editor.modifiers.clone();
+        // TODO: Move in struct impl
         match self.focus {
             FocusElement::Menu(id) => {
-                let menu = self.editor.get_menu(id);
-                match virtual_key_code {
-                    Some(VirtualKeyCode::Up) => menu.move_up(),
-                    Some(VirtualKeyCode::Down) => menu.move_down(),
-                    Some(VirtualKeyCode::Right) => menu.focus_submenu(),
-                    Some(VirtualKeyCode::Left) => menu.unfocus(),
-                    Some(VirtualKeyCode::Return) => menu.select(),
-                    Some(VirtualKeyCode::Escape) => { menu.close(); menu.unfocus() },
-                    Some(VirtualKeyCode::Tab) => { if !modifiers.shift() { menu.move_down() } else { menu.move_up() } },
-                    _ => { menu.close(); menu.unfocus() }
+                if let Some(keycode) = virtual_key_code {
+                    self.editor.get_menu(id).handle_key(keycode, modifiers);
                 }
             },
             FocusElement::Editor => {
-                if modifiers.logo() && modifiers.alt() {
-                    // Handle ctrl-alt shortcuts
-                    match virtual_key_code {
-                        Some(VirtualKeyCode::Right) => self.editor.set_line_alignement(TextAlignment::Right),
-                        Some(VirtualKeyCode::Left) => self.editor.set_line_alignement(TextAlignment::Left),
-                        Some(VirtualKeyCode::Up) => self.editor.set_line_alignement(TextAlignment::Center),
-                        _ => {}
-                    }
-                } else {
-                    match virtual_key_code {
-                        Some(VirtualKeyCode::Right) => self.editor.move_cursor_relative(1, 0),
-                        Some(VirtualKeyCode::Left) => self.editor.move_cursor_relative(-1, 0),
-                        Some(VirtualKeyCode::Up) => self.editor.move_cursor_relative(0, -1),
-                        Some(VirtualKeyCode::Down) => self.editor.move_cursor_relative(0, 1),
-                        Some(VirtualKeyCode::Backspace) => self.editor.delete_char(),
-                        Some(VirtualKeyCode::Delete) => { self.editor.move_cursor_relative(1, 0); self.editor.delete_char(); },
-                        Some(VirtualKeyCode::Return) => { if modifiers.alt() { self.editor.toggle_contextual_menu() } else { self.editor.new_line() } },
-                        Some(VirtualKeyCode::Escape) => self.editor.menu.close(),
-                        Some(VirtualKeyCode::Tab) => { if modifiers.alt() { self.editor.menu.open() } },
-                        _ => { return; },
-                    }
+                let ctrl_alt = modifiers.logo() && modifiers.alt();
+                match virtual_key_code {
+                    Some(VirtualKeyCode::Right) => { if ctrl_alt { self.editor.set_line_alignement(TextAlignment::Right) } else {self.editor.move_cursor_relative(1, 0) } },
+                    Some(VirtualKeyCode::Left) => if ctrl_alt { self.editor.set_line_alignement(TextAlignment::Left) } else { self.editor.move_cursor_relative(-1, 0) },
+                    Some(VirtualKeyCode::Up) => if ctrl_alt { self.editor.set_line_alignement(TextAlignment::Center) } else { self.editor.move_cursor_relative(0, -1) },
+                    Some(VirtualKeyCode::Down) => self.editor.move_cursor_relative(0, 1),
+                    Some(VirtualKeyCode::Backspace) => self.editor.delete_char(),
+                    Some(VirtualKeyCode::Delete) => { self.editor.move_cursor_relative(1, 0); self.editor.delete_char(); },
+                    Some(VirtualKeyCode::Return) => { if modifiers.alt() { self.editor.toggle_contextual_menu() } else { self.editor.new_line() } },
+                    Some(VirtualKeyCode::Escape) => self.editor.menu.close(),
+                    Some(VirtualKeyCode::Tab) => { if modifiers.alt() { self.editor.menu.open() } },
+                    _ => { return; },
                 }
             }
         }
@@ -185,10 +172,14 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     }
 
     fn on_keyboard_char(&mut self, helper: &mut WindowHelper<EditorEvent>, unicode_codepoint: char) {
-        if unicode_codepoint >= ' '  && unicode_codepoint <= '~' || unicode_codepoint >= '¡' {
-            self.editor.add_char(unicode_codepoint.to_string());
-            self.editor.update_text_layout();
-            helper.request_redraw();
+        match self.focus {
+          FocusElement::Editor => {
+              if unicode_codepoint >= ' '  && unicode_codepoint <= '~' || unicode_codepoint >= '¡' {
+                  self.editor.add_char(unicode_codepoint.to_string());
+                  self.editor.update_text_layout();
+                  helper.request_redraw();
+              }
+          }, _ => {}
         }
     }
 
