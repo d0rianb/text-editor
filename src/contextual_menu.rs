@@ -6,7 +6,7 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::font::FormattedTextBlock;
 use speedy2d::Graphics2D;
-use speedy2d::window::UserEventSender;
+use speedy2d::window::{ModifiersState, UserEventSender, VirtualKeyCode};
 
 use crate::camera::Camera;
 use crate::cursor::{Cursor, CURSOR_OFFSET_X};
@@ -96,9 +96,23 @@ impl ContextualMenu {
         let new_animation_height = Animation::new(start_height, 0., ANIMATION_DURATION, EasingFunction::SmootherStep, self.event_sender.clone().unwrap());
         self.size_animation.x = Some(new_animation_width);
         self.size_animation.y = Some(new_animation_height);
+        self.unfocus();
     }
 
-    pub fn move_up(&mut self) {
+    pub fn handle_key(&mut self, keycode: VirtualKeyCode, modifiers: ModifiersState) {
+        match keycode {
+            VirtualKeyCode::Up => self.move_up(),
+            VirtualKeyCode::Down => self.move_down(),
+            VirtualKeyCode::Right => { if self.focus_item_has_submenu() { self.focus_submenu() } else { self.close() } },
+            VirtualKeyCode::Left => self.unfocus(),
+            VirtualKeyCode::Return => self.select(),
+            VirtualKeyCode::Escape => self.close(),
+            VirtualKeyCode::Tab => { if !modifiers.shift() { self.move_down() } else { self.move_up() } },
+            _ => self.close()
+        }
+    }
+
+    fn move_up(&mut self) {
         if !self.is_focus() { return; }
         let mut index = self.focus_index as i32 - 1;
         let start_index = if let Some(animation) = &self.focus_y_animation { animation.value } else { self.focus_index as f32 };
@@ -107,7 +121,7 @@ impl ContextualMenu {
         self.focus_y_animation = Some(Animation::new(start_index, self.focus_index as f32, ANIMATION_DURATION, EasingFunction::EaseOut, self.event_sender.clone().unwrap()));
     }
 
-    pub fn move_down(&mut self) {
+    fn move_down(&mut self) {
         if !self.is_focus() { return; }
         let start_index = if let Some(animation) = &self.focus_y_animation { animation.value } else { self.focus_index as f32 };
         self.set_focus((self.focus_index + 1) % self.items.len() as isize);
@@ -123,6 +137,10 @@ impl ContextualMenu {
 
     fn get_focused_item(&mut self) -> &mut MenuItem {
         &mut self.items[self.focus_index as usize]
+    }
+
+    fn focus_item_has_submenu(&self) -> bool {
+        self.items[self.focus_index as usize].sub_menu.is_some()
     }
 
     pub fn is_focus(&self) -> bool {
@@ -151,9 +169,6 @@ impl ContextualMenu {
             sub_menu.previous_focus = Menu(id);
             sub_menu.id = sub_menu_id;
             sub_menu.focus()
-        } else {
-            self.close();
-            self.unfocus();
         }
     }
 
@@ -168,7 +183,6 @@ impl ContextualMenu {
             self.focus_submenu();
         } else if action != MenuAction::Void {
             self.close();
-            self.unfocus()
         }
     }
 
