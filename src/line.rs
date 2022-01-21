@@ -56,6 +56,10 @@ impl Line {
         self.alignement = alignement;
     }
 
+    pub fn get_text(&self) -> String {
+        self.buffer.join("")
+    }
+
     pub fn get_word_at(&self, index: u32) -> (u32, u32) {
         let mut start_index = index;
         let mut end_index = index;
@@ -70,7 +74,7 @@ impl Line {
     }
 
     pub fn update_text_layout(&mut self) -> i32 { // return the difference of length
-        let string = self.buffer.clone().join("");
+        let string = self.get_text();
         let font = self.font.borrow();
         let font_formated_string = font.format(&string);
         let mut diff: i32 = 0;

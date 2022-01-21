@@ -1,14 +1,14 @@
 use std::{cmp, fs};
-
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::thread::park_timeout;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::font::TextAlignment;
 use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
-use speedy2d::window::{ModifiersState, UserEventSender};
+use speedy2d::window::{ModifiersState, UserEventSender, VirtualKeyCode};
 
 use clipboard::ClipboardProvider;
 use clipboard::ClipboardContext;
@@ -21,11 +21,12 @@ use yaml_rust::{Yaml, YamlLoader};
 use crate::cursor::{Cursor, CURSOR_OFFSET_X};
 use crate::camera::Camera;
 use crate::contextual_menu::{ContextualMenu, MenuItem};
-use crate::{EditorEvent, MenuAction, MenuId};
+use crate::{Animation, EditorEvent, MenuAction, MenuId};
 use crate::font::Font;
 use crate::line::Line;
 use crate::range::{Range};
 use crate::editable::Editable;
+use crate::FocusElement::Menu;
 
 pub const EDITOR_PADDING: f32 = 10.;
 pub const EDITOR_OFFSET_TOP: f32 = 55.;
@@ -38,6 +39,8 @@ pub struct Editor {
     pub lines: Vec<Line>,
     pub cursor: Cursor,
     pub camera: Camera,
+    pub offset: Vector2<f32>,
+    pub padding: f32,
     pub font: Rc<RefCell<Font>>,
     pub system_font: Rc<RefCell<Font>>,
     pub modifiers : ModifiersState,
@@ -105,6 +108,23 @@ impl Editable for Editor {
             self.move_cursor_relative(-1, 0);
         }
         self.selection.reset();
+        self.update_text_layout();
+    }
+
+    fn handle_key(&mut self, keycode: VirtualKeyCode) {
+        let ctrl_alt = self.modifiers.logo() && self.modifiers.alt();
+        match keycode {
+            VirtualKeyCode::Right => if ctrl_alt { self.set_line_alignement(TextAlignment::Right) } else { self.move_cursor_relative(1, 0) },
+            VirtualKeyCode::Left => if ctrl_alt { self.set_line_alignement(TextAlignment::Left) } else { self.move_cursor_relative(-1, 0) },
+            VirtualKeyCode::Up => if ctrl_alt { self.set_line_alignement(TextAlignment::Center) } else { self.move_cursor_relative(0, -1) },
+            VirtualKeyCode::Down => self.move_cursor_relative(0, 1),
+            VirtualKeyCode::Backspace => self.delete_char(),
+            VirtualKeyCode::Delete => { self.move_cursor_relative(1, 0); self.delete_char(); },
+            VirtualKeyCode::Return => if self.modifiers.alt() { self.toggle_contextual_menu() } else { self.new_line() },
+            VirtualKeyCode::Escape => self.menu.close(),
+            VirtualKeyCode::Tab => if self.modifiers.alt() { self.menu.open() },
+            _ => { return; },
+        }
         self.update_text_layout();
     }
 
@@ -312,17 +332,19 @@ impl Editable for Editor {
 }
 
 impl Editor {
-    pub fn new(width: f32, height: f32) -> Self {
+    pub fn new(width: f32, height: f32, offset: Vector2<f32>, padding: f32) -> Self {
         let font = Rc::new(RefCell::new(Font::new(
             include_bytes!("../resources/font/CourierRegular.ttf"),
             // "resources/font/Monaco.ttf",
-            width - EDITOR_PADDING*2.,
-            height - EDITOR_OFFSET_TOP - EDITOR_PADDING*2.,
+            width - offset.x - padding*2.,
+            height - offset.y - padding*2.,
         )));
         let system_font = Rc::new(RefCell::new(Font::new(include_bytes!("../resources/font/Roboto-Regular.ttf"), width, height)));
         Self {
             cursor: Cursor::new(0, 0, Rc::clone(&font)),
-            camera: Camera::new(width - EDITOR_PADDING*2., height - EDITOR_OFFSET_TOP - EDITOR_PADDING*2.),
+            camera: Camera::new(width, height, offset.clone(), padding),
+            offset,
+            padding,
             lines: vec![Line::new(Rc::clone(&font))],
             font,
             system_font: system_font.clone(),
@@ -337,10 +359,21 @@ impl Editor {
         }
     }
 
-    pub fn set_animation_event_sender(&mut self, es: Option<UserEventSender<EditorEvent>>) {
+    pub fn set_event_sender(&mut self, es: Option<UserEventSender<EditorEvent>>) {
+        self.event_sender = es.clone();
         self.cursor.event_sender = es.clone();
         self.camera.event_sender = es.clone();
         self.menu.event_sender = es.clone();
+    }
+
+    pub fn set_offset(&mut self, offset: Vector2<f32>) {
+        self.offset = offset.clone();
+        let width = self.system_font.borrow().editor_size.x; // Hack to get the original width back
+        let height = self.system_font.borrow().editor_size.y; // Hack to get the original height back
+        self.camera = Camera::new(width, height, offset.clone(), self.padding);
+        self.camera.event_sender = self.event_sender.clone();
+        self.font.borrow_mut().editor_size.x = width - offset.x - self.padding * 2.;
+        self.font.borrow_mut().editor_size.y = height - offset.y - self.padding * 2.;
     }
 
     pub fn on_resize(&mut self, size: Vector2<u32>) {
@@ -426,8 +459,8 @@ impl Editor {
         // Vertical Scroll
         if self.camera.get_cursor_real_y(&self.cursor) < self.camera.computed_y() + self.camera.safe_zone_size {
             self.camera.move_y(self.camera.get_cursor_real_y(&self.cursor) - self.camera.computed_y() - self.camera.safe_zone_size)
-        } else if EDITOR_PADDING + self.cursor.computed_y() - self.camera.computed_y() > self.camera.height - self.camera.safe_zone_size {
-            self.camera.move_y(EDITOR_PADDING + self.cursor.computed_y() - self.camera.computed_y() - self.camera.height + self.camera.safe_zone_size)
+        } else if self.padding + self.cursor.computed_y() - self.camera.computed_y() > self.camera.height - self.camera.safe_zone_size {
+            self.camera.move_y(self.padding + self.cursor.computed_y() - self.camera.computed_y() - self.camera.height + self.camera.safe_zone_size)
         }
     }
 
@@ -476,7 +509,6 @@ impl Editor {
         self.cursor.move_to(0, self.cursor.y);
     }
 
-
     pub fn toggle_contextual_menu(&mut self) {
         let mut items = vec![];
         if self.selection.is_valid() {
@@ -504,18 +536,19 @@ impl Editor {
     fn contextual_submenu_test(&mut self) {
         let mut sub_menu = ContextualMenu::new_with_items(self.system_font.clone(), vec![
             MenuItem::new("SubMenu 1", MenuAction::Void),
-            MenuItem::new("SubMenu 2", MenuAction::Void),
+            MenuItem::new("SubMenu Input", MenuAction::PrintWithInput),
             MenuItem::new("SubMenu 3", MenuAction::Void),
             MenuItem::new("SubMenu 4", MenuAction::Void),
         ]);
         sub_menu.event_sender = self.event_sender.clone();
         self.menu.open_with(vec![
-            MenuItem::new("Menu 1", MenuAction::Void),
-            MenuItem::new("Menu 1", MenuAction::Void),
+            MenuItem::new("Menu 1", MenuAction::Underline),
+            MenuItem::new("New ...", MenuAction::PrintWithInput),
             MenuItem {
                title: "Menu 2 >".to_string(),
                action: MenuAction::OpenSubMenu,
-               sub_menu: Some(sub_menu)
+               sub_menu: Some(sub_menu),
+                input: Option::None
            }
         ]);
     }
@@ -656,17 +689,7 @@ impl Editor {
         self.update_text_layout();
     }
 
-    pub fn update_text_layout(&mut self) {
-        let mut difference = 0;
-        for (i, line) in (&mut self.lines).iter_mut().enumerate() {
-            let diff = line.update_text_layout();
-            if i as u32 == self.cursor.y { difference = diff; }
-        }
-        self.font.borrow_mut().style_changed = false;
-        self.cursor.move_to((self.cursor.x as i32 - difference) as u32, self.cursor.y);
-    }
-
-    pub fn update(&mut self, dt: f32) {
+    pub fn get_animations(&mut self) -> Vec<&mut Option<Animation>> {
         let mut animations = vec![
             &mut self.cursor.animation.x, &mut self.cursor.animation.y,
             &mut self.camera.animation.x,  &mut self.camera.animation.y,
@@ -678,7 +701,27 @@ impl Editor {
                 animations.push(&mut sub_menu.size_animation.y);
                 animations.push(&mut sub_menu.focus_y_animation);
             }
+            if let Some(input) = &mut items.input {
+                for animation in input.get_animation() {
+                    animations.push(animation)
+                }
+            }
         }
+        animations
+    }
+
+    pub fn update_text_layout(&mut self) {
+        let mut difference = 0;
+        for (i, line) in (&mut self.lines).iter_mut().enumerate() {
+            let diff = line.update_text_layout();
+            if i as u32 == self.cursor.y { difference = diff; }
+        }
+        self.font.borrow_mut().style_changed = false;
+        self.cursor.move_to((self.cursor.x as i32 - difference) as u32, self.cursor.y);
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        let animations = self.get_animations();
         for animation in animations {
             if let Some(anim) = animation {
                 if !anim.has_started {
@@ -746,7 +789,7 @@ impl Editor {
             Color::WHITE
         );
         // draw the title bar line
-        if self.camera.computed_y() > EDITOR_PADDING + EDITOR_OFFSET_TOP {
+        if self.camera.computed_y() > self.padding + EDITOR_OFFSET_TOP {
             graphics.draw_line(
                 Vector2::new(0., EDITOR_OFFSET_TOP),
                 Vector2::new(self.camera.width, EDITOR_OFFSET_TOP),

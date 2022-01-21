@@ -10,20 +10,22 @@ use speedy2d::window::{ModifiersState, UserEventSender, VirtualKeyCode};
 
 use crate::camera::Camera;
 use crate::cursor::{Cursor, CURSOR_OFFSET_X};
-use crate::{EditorEvent, FocusElement, MenuAction, MenuId};
+use crate::{EditorEvent, FocusElement, MenuAction, MenuActionFn, MenuId};
 use crate::animation::{Animation, EasingFunction};
+use crate::EditorEvent::Focus;
 use crate::FocusElement::{Editor, Menu};
 use crate::font::Font;
-use crate::render_helper::draw_rounded_rectangle;
+use crate::input::Input;
+use crate::render_helper::{draw_rounded_rectangle, draw_rounded_rectangle_with_border};
 
 const ITEM_PADDING: f32 = 5.;
 const ANIMATION_DURATION: f32 = 100.;
 
-#[derive(Clone)]
 pub struct MenuItem {
     pub title: String,
     pub action: MenuAction,
-    pub sub_menu: Option<ContextualMenu>
+    pub sub_menu: Option<ContextualMenu>,
+    pub input: Option<Input>
 }
 
 impl Debug for MenuItem {
@@ -33,12 +35,16 @@ impl Debug for MenuItem {
 }
 
 impl MenuItem {
-    pub fn new(title: &str, action: MenuAction) -> Self { Self { title: title.to_string(), action, sub_menu: Option::None } }
+    pub fn new(title: &str, action: MenuAction) -> Self { Self {
+        title: title.to_string(),
+        action,
+        sub_menu: Option::None,
+        input: Option::None,
+    } }
 }
 
-#[derive(Clone)]
 pub struct ContextualMenu {
-    id: MenuId,
+    pub id: MenuId,
     pub is_visible: bool,
     pub items: Vec<MenuItem>,
     pub focus_index: isize,
@@ -88,6 +94,16 @@ impl ContextualMenu {
     }
 
     pub fn close(&mut self) {
+       self.internal_close();
+        self.unfocus();
+    }
+
+    // Close the submenu without unfocus the current one
+    pub fn close_submenu(&mut self) {
+        self.internal_close();
+    }
+
+    fn internal_close(&mut self) {
         if !self.is_visible { return; }
         self.is_visible = false;
         let start_width = if let Some(animation_width) = &self.size_animation.x { animation_width.value } else { self.width() };
@@ -96,7 +112,6 @@ impl ContextualMenu {
         let new_animation_height = Animation::new(start_height, 0., ANIMATION_DURATION, EasingFunction::SmootherStep, self.event_sender.clone().unwrap());
         self.size_animation.x = Some(new_animation_width);
         self.size_animation.y = Some(new_animation_height);
-        self.unfocus();
     }
 
     pub fn handle_key(&mut self, keycode: VirtualKeyCode, modifiers: ModifiersState) {
@@ -130,12 +145,11 @@ impl ContextualMenu {
 
     fn set_focus(&mut self, index: isize) {
         self.focus_index = index;
-        if let Some(sub_menu) = &mut self.get_focused_item().sub_menu {
-            sub_menu.open();
-        }
+        if let Some(sub_menu) = &mut self.get_focused_item().sub_menu { sub_menu.open(); }
     }
 
-    fn get_focused_item(&mut self) -> &mut MenuItem {
+    pub fn get_focused_item(&mut self) -> &mut MenuItem {
+        assert!(self.is_focus());
         &mut self.items[self.focus_index as usize]
     }
 
@@ -155,6 +169,7 @@ impl ContextualMenu {
     pub fn unfocus(&mut self) {
         self.focus_index = -1;
         self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(self.previous_focus)).unwrap();
+        if self.previous_focus == FocusElement::Editor { self.internal_close(); }
     }
 
     pub fn focus_submenu(&mut self) {
@@ -169,20 +184,35 @@ impl ContextualMenu {
             sub_menu.previous_focus = Menu(id);
             sub_menu.id = sub_menu_id;
             sub_menu.focus()
+        } else if let Some(input) = &mut self.items[self.focus_index as usize].input {
+           self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(FocusElement::MenuInput(self.id))).unwrap()
         }
     }
 
     pub fn select(&mut self) {
         if !self.is_focus() { return; }
         let action = self.get_focused_item().action.clone();
+        self.event_sender.as_ref().unwrap().send_event(EditorEvent::MenuItemSelected(action.clone())).unwrap();
+        match action {
+            MenuAction::OpenSubMenu => self.focus_submenu(),
+            MenuAction::Void => {},
+            MenuAction::PrintWithInput => self.toggle_input(MenuAction::Print),
+            _ => self.close()
+        }
+    }
 
-        self.event_sender.as_ref().unwrap().send_event(
-            EditorEvent::MenuItemSelected(action.clone())
-        ).unwrap();
-        if action == MenuAction::OpenSubMenu {
-            self.focus_submenu();
-        } else if action != MenuAction::Void {
-            self.close();
+    pub fn toggle_input(&mut self, action: MenuActionFn) {
+        if !self.is_focus() { return; }
+        let es = self.event_sender.clone().unwrap();
+        let id = self.id;
+        let focus_item = self.get_focused_item();
+        if let Some(input) = &mut focus_item.input {
+            input.unfocus();
+            focus_item.input = Option::None;
+        } else {
+            let input = Input::new(id, action, es);
+            focus_item.input = Some(input);
+            focus_item.input.as_ref().unwrap().focus();
         }
     }
 
@@ -202,19 +232,11 @@ impl ContextualMenu {
     fn height(&self) -> f32 { (self.formated_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING) * self.items.len() as f32 + ITEM_PADDING}
 
     pub fn computed_width(&self) -> f32 {
-        if let Some(animation) = &self.size_animation.x {
-            animation.value
-        } else {
-            self.width()
-        }
+        if let Some(animation) = &self.size_animation.x { animation.value } else { self.width() }
     }
 
     pub fn computed_height(&self) -> f32 {
-        if let Some(animation) = &self.size_animation.y {
-            animation.value
-        } else {
-            self.height()
-        }
+        if let Some(animation) = &self.size_animation.y { animation.value } else { self.height() }
     }
 
     pub fn update_content(&mut self) {
@@ -234,12 +256,10 @@ impl ContextualMenu {
         if menu_origin.x + width > editor_size.x { menu_origin.x -= menu_origin.x + width - editor_size.x }
         if menu_origin.y + height > editor_size.y { menu_origin.y -= menu_origin.y + height - editor_size.y }
         let border_color: Color = Color::from_int_rgba(150, 150, 150, 250);
-        let highlight_color: Color = Color::from_int_rgba(225, 225, 225, 250);
+        let highlight_color: Color = Color::from_int_rgba(225, 225, 225, 255);
         const BORDER_WIDTH: f32 = 0.5;
-        // draw border
-        draw_rounded_rectangle(menu_origin.x - BORDER_WIDTH, menu_origin.y - BORDER_WIDTH, width + 2. * BORDER_WIDTH, height + 2. * BORDER_WIDTH, 8. - BORDER_WIDTH, border_color, graphics);
         // draw background
-        draw_rounded_rectangle(menu_origin.x, menu_origin.y, width, height, 8., Color::from_int_rgba(250, 250, 250, 250), graphics);
+        draw_rounded_rectangle_with_border(menu_origin.x, menu_origin.y, width, height, 8., BORDER_WIDTH, Color::from_int_rgba(250, 250, 250, 250), graphics);
         for (i, item) in self.items.iter_mut().enumerate() {
             // draw highlight
             if i == self.focus_index as usize {
@@ -247,13 +267,16 @@ impl ContextualMenu {
                 draw_rounded_rectangle(menu_origin.x, menu_origin.y + item_height * computed_i, width, item_height + ITEM_PADDING, 10., highlight_color, graphics);
                 if let Some(sub_menu) = &mut item.sub_menu {
                     sub_menu.render(Vector2::new(menu_origin.x + width, menu_origin.y + item_height * computed_i), graphics);
+                } else if let Some(input) = &mut item.input {
+                    input.render(menu_origin.x + width, menu_origin.y + item_height * computed_i, graphics);
                 }
-            } else if let Some(sub_menu) = &mut item.sub_menu { sub_menu.close() }
+            } else if let Some(sub_menu) = &mut item.sub_menu { sub_menu.close_submenu() }
             graphics.draw_text(
                 menu_origin + Vector2::new(2. * ITEM_PADDING, item_height * (i as f32) + ITEM_PADDING),
                 Color::BLACK,
                 &self.formated_items[i]
             );
+
         }
     }
 }

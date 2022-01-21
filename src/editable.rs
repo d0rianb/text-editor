@@ -1,9 +1,12 @@
 use speedy2d::dimen::Vector2;
+use speedy2d::window::VirtualKeyCode;
 
 pub trait Editable {
     fn add_char(&mut self, c: String);
 
     fn delete_char(&mut self);
+
+    fn handle_key(&mut self, keycode: VirtualKeyCode);
 
     fn move_cursor(&mut self, position: Vector2<u32>);
 

@@ -39,7 +39,7 @@ impl Cursor {
             y,
             font,
             cursor_type: CursorType::Carret,
-            animation: Vector2 { x: Option::None, y: Option::None },
+            animation: Vector2::new(Option::None, Option::None),
             event_sender: Option::None,
         }
     }
@@ -51,20 +51,11 @@ impl Cursor {
     }
 
     pub fn computed_x(&self) -> f32 {
-        if let Some(animation) = &self.animation.x {
-            animation.value
-        } else {
-            self.x as f32 * self.font.borrow().char_width
-        }
+        if let Some(animation) = &self.animation.x { animation.value } else { self.x as f32 * self.font.borrow().char_width }
     }
 
     pub fn computed_y(&self) -> f32 {
-        if let Some(animation) = &self.animation.y {
-            animation.value
-        }
-        else {
-            self.y as f32 * self.font.borrow().char_height
-        }
+        if let Some(animation) = &self.animation.y { animation.value } else { self.y as f32 * self.font.borrow().char_height }
     }
 
     pub fn position(&self) -> Vector2<f32> {

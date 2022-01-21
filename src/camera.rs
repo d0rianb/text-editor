@@ -14,34 +14,37 @@ pub struct Camera {
     y: f32,
     pub width: f32,
     pub height: f32,
+    pub initial_x: f32,
+    pub initial_y: f32,
     pub safe_zone_size: f32,
     pub animation: Vector2<Option<Animation>>,
     pub event_sender: Option<UserEventSender<EditorEvent>>,
 }
 
-const INITIAL_X: f32 = -EDITOR_PADDING;
-const INITIAL_Y: f32 = -EDITOR_OFFSET_TOP - EDITOR_PADDING;
 
 impl Camera {
-    pub fn new(width: f32, height: f32) -> Self {
+    pub fn new(width: f32, height: f32, offset: Vector2<f32>, padding: f32) -> Self {
+        Self {
+            x: 0.,
+            y: 0.,
+            width: width - 2. * padding - offset.x,
+            height: height - 2. * padding - offset.y,
+            initial_x: -padding - offset.x,
+            initial_y: -padding - offset.y,
+            safe_zone_size: 30.0,
+            animation: Vector2::new(Option::None, Option::None),
+            event_sender: Option::None
+        }
+    }
+
+    pub fn from_real_origin(width: f32, height: f32) -> Self {
         Self {
             x: 0.,
             y: 0.,
             width,
             height,
-            safe_zone_size: 30.0,
-            animation: Vector2 { x: Option::None, y: Option::None },
-            event_sender: Option::None
-        }
-    }
-
-    #[allow(non_snake_case)]
-    pub fn from_real_origin(x: f32, y: f32) -> Self {
-        Self {
-            x: x - INITIAL_X,
-            y: y - INITIAL_Y,
-            width: 0.,
-            height: 0.,
+            initial_x: 0.,
+            initial_y: 0.,
             safe_zone_size: 0.0,
             animation: Vector2 { x: Option::None, y: Option::None },
             event_sender: Option::None
@@ -54,21 +57,23 @@ impl Camera {
             y: camera.y + offset.y,
             width: camera.width,
             height: camera.height,
+            initial_x: camera.initial_x,
+            initial_y: camera.initial_y,
             safe_zone_size: 30.0,
-            animation: Vector2 { x: Option::None, y: Option::None },
+            animation: Vector2::new(Option::None, Option::None),
             event_sender: camera.event_sender.clone()
         }
     }
 
     pub fn move_x(&mut self, dx: f32) {
         let new_x = (self.x + dx).clamp(0., self.width);
-        self.transition(new_x + INITIAL_X, self.y + INITIAL_Y);
+        self.transition(new_x + self.initial_x, self.y + self.initial_y);
         self.x = new_x;
     }
 
     pub fn move_y(&mut self, dy: f32) {
         let new_y = (self.y + dy).clamp(0., self.height);
-        self.transition(self.x + INITIAL_X, new_y + INITIAL_Y);
+        self.transition(self.x + self.initial_x, new_y + self.initial_y);
         self.y = new_y;
     }
 
@@ -78,20 +83,11 @@ impl Camera {
     }
 
     pub fn computed_x(&self) -> f32 {
-        if let Some(animation) = &self.animation.x {
-            animation.value
-        } else {
-            self.x + INITIAL_X
-        }
+        if let Some(animation) = &self.animation.x { animation.value } else { self.x + self.initial_x }
     }
 
     pub fn computed_y(&self) -> f32 {
-        if let Some(animation) = &self.animation.y {
-            animation.value
-        }
-        else {
-            self.y + INITIAL_Y
-        }
+        if let Some(animation) = &self.animation.y { animation.value } else { self.y + self.initial_y }
     }
 
     pub fn position(&self) -> Vector2<f32> {
@@ -99,7 +95,7 @@ impl Camera {
     }
 
     pub fn get_cursor_real_y(&self, cursor: &Cursor) -> f32 {
-        cursor.computed_y() + INITIAL_Y - cursor.font.borrow().char_height
+        cursor.computed_y() + self.initial_y - cursor.font.borrow().char_height
     }
 
     fn transition(&mut self, x: f32, y: f32) {
@@ -115,14 +111,14 @@ impl Camera {
 
     pub fn _render(&self, graphics: &mut Graphics2D) {
         graphics.draw_line(
-            Vector2::new(-INITIAL_X + self.safe_zone_size, -INITIAL_Y +  self.safe_zone_size),
-            Vector2::new(-INITIAL_X + self.width - self.safe_zone_size, -INITIAL_Y +  self.safe_zone_size),
+            Vector2::new(-self.initial_x + self.safe_zone_size, -self.initial_y +  self.safe_zone_size),
+            Vector2::new(-self.initial_x + self.width - self.safe_zone_size, -self.initial_y +  self.safe_zone_size),
             1.,
             Color::BLACK
         );
         graphics.draw_line(
-            Vector2::new(-INITIAL_X + self.safe_zone_size, -INITIAL_Y +  self.height - self.safe_zone_size),
-            Vector2::new(-INITIAL_X + self.width -  self.safe_zone_size, -INITIAL_Y +  self.height - self.safe_zone_size),
+            Vector2::new(-self.initial_x + self.safe_zone_size, -self.initial_y +  self.height - self.safe_zone_size),
+            Vector2::new(-self.initial_x + self.width -  self.safe_zone_size, -self.initial_y +  self.height - self.safe_zone_size),
             1.,
             Color::BLACK
         );

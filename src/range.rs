@@ -169,7 +169,7 @@ impl Range {
                     Vector2::new(indices.0 as f32 * font_width - line_camera.computed_x(), line_y),
                     Vector2::new(indices.1 as f32 * font_width - line_camera.computed_x(), line_y + font_height),
                 ),
-                Color::from_int_rgba(100, 100, 100, 100),
+                Color::from_int_rgba(100, 100, 100, 50),
             )
         }
     }

@@ -26,26 +26,33 @@ use speedy2d::font::TextAlignment;
 use editor::Editor;
 use crate::animation::Animation;
 use crate::editable::Editable;
+use crate::editor::{EDITOR_OFFSET_TOP, EDITOR_PADDING};
 
 const FPS: u64 = 60;
 const FRAME_DURATION: u64 = 1000 / FPS; // ms
 
+pub type MenuActionFn = fn(String) -> MenuAction;
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum MenuAction {
     Open(String),
+    OpenWithInput,
     Save(String),
+    SaveWithInput,
     Void,
     Exit,
     CancelChip,
     Underline,
     Bold,
-    OpenSubMenu
+    OpenSubMenu,
+    PrintWithInput,
+    Print(String),
 }
 
 type MenuId = [isize; 3]; // Support 3 nested menu
 
 #[derive(PartialEq, Debug, Clone, Copy)]
-pub enum FocusElement { Editor, Menu(MenuId) }
+pub enum FocusElement { Editor, Menu(MenuId), MenuInput(MenuId) }
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum EditorEvent {
@@ -66,7 +73,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     fn on_start(&mut self, helper: &mut WindowHelper<EditorEvent>, _info: WindowStartupInfo) {
         let event_sender = helper.create_user_event_sender();
         self.editor.event_sender = Some(event_sender.clone());
-        self.editor.set_animation_event_sender(Some(event_sender.clone()));
+        self.editor.set_event_sender(Some(event_sender.clone()));
         helper.request_redraw();
         thread::spawn(move || {
             loop {
@@ -85,7 +92,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
             },
             EditorEvent::Focus(focus_element) => self.focus = focus_element,
             EditorEvent::MenuItemSelected(item) => match item {
-                MenuAction::Void => {  },
+                MenuAction::Void => {},
                 MenuAction::Exit => helper.terminate_loop(),
                 MenuAction::CancelChip => self.editor.cancel_chip(),
                 MenuAction::Open(path) => self.editor.load_file(&path),
@@ -93,6 +100,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::Underline => self.editor.underline(),
                 MenuAction::Bold => self.editor.bold(),
                 MenuAction::OpenSubMenu => {},
+                MenuAction::Print(text) => println!("{}", text),
                 _ => {}
             }
         }
@@ -145,45 +153,44 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     fn on_key_down(&mut self, helper: &mut WindowHelper<EditorEvent>, virtual_key_code: Option<VirtualKeyCode>, _scancode: KeyScancode) {
         let modifiers = self.editor.modifiers.clone();
         // TODO: Move in struct impl
-        match self.focus {
-            FocusElement::Menu(id) => {
-                if let Some(keycode) = virtual_key_code {
-                    self.editor.get_menu(id).handle_key(keycode, modifiers);
-                }
-            },
-            FocusElement::Editor => {
-                let ctrl_alt = modifiers.logo() && modifiers.alt();
-                match virtual_key_code {
-                    Some(VirtualKeyCode::Right) => { if ctrl_alt { self.editor.set_line_alignement(TextAlignment::Right) } else {self.editor.move_cursor_relative(1, 0) } },
-                    Some(VirtualKeyCode::Left) => if ctrl_alt { self.editor.set_line_alignement(TextAlignment::Left) } else { self.editor.move_cursor_relative(-1, 0) },
-                    Some(VirtualKeyCode::Up) => if ctrl_alt { self.editor.set_line_alignement(TextAlignment::Center) } else { self.editor.move_cursor_relative(0, -1) },
-                    Some(VirtualKeyCode::Down) => self.editor.move_cursor_relative(0, 1),
-                    Some(VirtualKeyCode::Backspace) => self.editor.delete_char(),
-                    Some(VirtualKeyCode::Delete) => { self.editor.move_cursor_relative(1, 0); self.editor.delete_char(); },
-                    Some(VirtualKeyCode::Return) => { if modifiers.alt() { self.editor.toggle_contextual_menu() } else { self.editor.new_line() } },
-                    Some(VirtualKeyCode::Escape) => self.editor.menu.close(),
-                    Some(VirtualKeyCode::Tab) => { if modifiers.alt() { self.editor.menu.open() } },
-                    _ => { return; },
-                }
+        if let Some(keycode) = virtual_key_code {
+            match self.focus {
+                FocusElement::Menu(id) => self.editor.get_menu(id).handle_key(keycode, modifiers),
+                FocusElement::Editor => self.editor.handle_key(keycode),
+                FocusElement::MenuInput(id) => self.editor.get_menu(id).get_focused_item().input.as_mut().unwrap().handle_key(keycode),
             }
         }
-        self.editor.update_text_layout();
         helper.request_redraw();
     }
 
     fn on_keyboard_char(&mut self, helper: &mut WindowHelper<EditorEvent>, unicode_codepoint: char) {
-        match self.focus {
-          FocusElement::Editor => {
-              if unicode_codepoint >= ' '  && unicode_codepoint <= '~' || unicode_codepoint >= '¡' {
-                  self.editor.add_char(unicode_codepoint.to_string());
-                  self.editor.update_text_layout();
-                  helper.request_redraw();
-              }
-          }, _ => {}
+        if unicode_codepoint >= ' '  && unicode_codepoint <= '~' || unicode_codepoint >= '¡' {
+            match self.focus {
+                FocusElement::Editor => {
+                        self.editor.add_char(unicode_codepoint.to_string());
+                        self.editor.update_text_layout();
+                    }
+
+                FocusElement::MenuInput(id) => {
+                    let input = self.editor.get_menu(id).get_focused_item().input.as_mut().unwrap();
+                    input.add_char(unicode_codepoint.to_string());
+                    input.update_text_layout();
+                }
+                _ => {}
+            }
+            helper.request_redraw();
+
         }
     }
 
-    fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) { self.editor.modifiers = state; }
+    fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) {
+        self.editor.modifiers = state.clone();
+        if self.editor.menu.is_focus() {
+            if let Some(input) = &mut self.editor.menu.get_focused_item().input {
+                input.editor.modifiers = state.clone();
+            }
+        }
+    }
 }
 
 fn main() {
@@ -198,7 +205,7 @@ fn main() {
             Some(WindowPosition::Center)
         )
     ).unwrap();
-    let mut editor = Editor::new(1200., 800.); // on mac dpr is 2 so the real size is 1200, 800
+    let mut editor = Editor::new(1200., 800., Vector2::new(0., EDITOR_OFFSET_TOP), EDITOR_PADDING); // on mac dpr is 2 so the real size is 1200, 800
     if args.len() > 1 {
         let filename = &args[1];
         editor.load_file(filename);
