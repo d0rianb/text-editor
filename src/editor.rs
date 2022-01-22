@@ -109,9 +109,9 @@ impl Editable for Editor {
     fn handle_key(&mut self, keycode: VirtualKeyCode) {
         let ctrl_alt = self.modifiers.logo() && self.modifiers.alt();
         match keycode {
-            VirtualKeyCode::Right => if ctrl_alt { self.set_line_alignement(TextAlignment::Right) } else { self.move_cursor_relative(1, 0) },
-            VirtualKeyCode::Left => if ctrl_alt { self.set_line_alignement(TextAlignment::Left) } else { self.move_cursor_relative(-1, 0) },
-            VirtualKeyCode::Up => if ctrl_alt { self.set_line_alignement(TextAlignment::Center) } else { self.move_cursor_relative(0, -1) },
+            VirtualKeyCode::Right => if ctrl_alt { self.set_line_alignment(TextAlignment::Right) } else { self.move_cursor_relative(1, 0) },
+            VirtualKeyCode::Left => if ctrl_alt { self.set_line_alignment(TextAlignment::Left) } else { self.move_cursor_relative(-1, 0) },
+            VirtualKeyCode::Up => if ctrl_alt { self.set_line_alignment(TextAlignment::Center) } else { self.move_cursor_relative(0, -1) },
             VirtualKeyCode::Down => self.move_cursor_relative(0, 1),
             VirtualKeyCode::Backspace => self.delete_char(),
             VirtualKeyCode::Delete => { self.move_cursor_relative(1, 0); self.delete_char(); },
@@ -206,6 +206,7 @@ impl Editable for Editor {
             '+' | '=' => self.increase_font_size(),
             '-' => self.decrease_font_size(),
             'n' => self.contextual_submenu_test(),
+            // 'n' => self.new_file_popup(),
             _ => {}
         }
     }
@@ -257,7 +258,7 @@ impl Editable for Editor {
         let max_y = self.lines.len() as u32 - 1;
         let y = cmp::min(position.y, max_y);
         let line = &self.lines[y as usize];
-        let x =  (position.x as i32 - (line.alignement_offset / self.font.borrow().char_width + 0.5) as i32).clamp(0,  line.buffer.len() as i32) as u32;
+        let x =  (position.x as i32 - (line.alignment_offset / self.font.borrow().char_width + 0.5) as i32).clamp(0, line.buffer.len() as i32) as u32;
         Vector2::new(x, y)
     }
 
@@ -380,7 +381,7 @@ impl Editor {
         let max_y = self.lines.len() as u32 - 1;
         let y = cmp::min(position.y, max_y);
         let line = &self.lines[y as usize];
-        let x =  (position.x as i32 - (line.alignement_offset / self.font.borrow().char_width + 0.5) as i32).clamp(0,  line.buffer.len() as i32) as u32;
+        let x =  (position.x as i32 - (line.alignment_offset / self.font.borrow().char_width + 0.5) as i32).clamp(0, line.buffer.len() as i32) as u32;
         Vector2::new(x, y)
     }
 
@@ -483,9 +484,9 @@ impl Editor {
             return;
         }
         let line_before_buffer= self.lines.get(index - 1).unwrap().buffer.clone();
-        let line_before_alignement = self.lines.get(index - 1).unwrap().alignement.clone();
+        let line_before_alignement = self.lines.get(index - 1).unwrap().alignment.clone();
         let last_line = self.lines.get_mut(index).unwrap();
-        last_line.set_alignement(line_before_alignement); // Preserve the alignement
+        last_line.set_alignment(line_before_alignement); // Preserve the alignement
         let text = line_before_buffer.join("");
         let nb_whitespace = text.len() - text.trim_start().len();
         if text.trim_start().starts_with('-') &&  text.trim().len() > 1 {
@@ -535,16 +536,15 @@ impl Editor {
             MenuItem::new("SubMenu 3", MenuAction::Void),
             MenuItem::new("SubMenu 4", MenuAction::Void),
         ]);
-        sub_menu.event_sender = self.event_sender.clone();
         self.menu.open_with(vec![
             MenuItem::new("Menu 1", MenuAction::Underline),
             MenuItem::new("New ...", MenuAction::PrintWithInput),
             MenuItem {
-               title: "Menu 2 >".to_string(),
-               action: MenuAction::OpenSubMenu,
-               sub_menu: Some(sub_menu),
+                title: "Menu 2 >".to_string(),
+                action: MenuAction::OpenSubMenu,
+                sub_menu: Some(sub_menu),
                 input: Option::None
-           }
+            }
         ]);
     }
 
@@ -579,17 +579,17 @@ impl Editor {
         Self::add_range_to_buffer(self.selection.clone(),  &mut self.bold_buffer);
     }
 
-    pub fn set_line_alignement(&mut self, alignement: TextAlignment) {
+    pub fn set_line_alignment(&mut self, alignment: TextAlignment) {
         if self.selection.is_valid() {
             let start = self.selection.get_real_start().unwrap().y as usize;
             let end = self.selection.get_real_end().unwrap().y as usize;
             for (i, line) in self.lines.iter_mut().enumerate() {
                 if start <= i && i <= end {
-                    line.set_alignement(alignement.clone());
+                    line.set_alignment(alignment.clone());
                 }
             }
         } else {
-            self.get_current_line().set_alignement(alignement);
+            self.get_current_line().set_alignment(alignment);
         }
     }
 
@@ -625,6 +625,30 @@ impl Editor {
             (file_name, String::from(*f))
         }).collect();
         files_with_names
+    }
+
+    fn get_recent_paths(&self) -> Vec<(String, String)> {
+        lazy_static! { static ref NAME_REGEX: Regex = Regex::new(r"([a-zA-Z0-9_-]+).(\w+)$").unwrap(); }
+        let folder_yaml = self.get_prefs_key("recent_folders");
+        let folder: Vec<&str> = folder_yaml.as_vec().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
+        let folder_with_names: Vec<(String, String)> = folder.iter().map(|f| {
+            let file_name: String = NAME_REGEX.captures(*f).unwrap().get(0).unwrap().as_str().to_string() + "/";
+            (file_name, String::from(*f))
+        }).collect();
+        folder_with_names
+    }
+
+    fn new_file_popup(&mut self) {
+        let mut path_items = vec![];
+        for (name, path) in self.get_recent_paths() {
+            path_items.push(MenuItem::new(&name, MenuAction::NewFileWithInput(path)));
+        }
+        let new_file_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
+        let items = vec![
+            MenuItem::new("New Empty File", MenuAction::NewFile("new-file".into())),
+            MenuItem::new_with_submenu("New File ...", new_file_submenu),
+        ];
+        self.menu.open_with(items);
     }
 
     /// Ask for the filepath if there is no one specified else save to the current one
@@ -688,19 +712,9 @@ impl Editor {
         let mut animations = vec![
             &mut self.cursor.animation.x, &mut self.cursor.animation.y,
             &mut self.camera.animation.x,  &mut self.camera.animation.y,
-            &mut self.menu.size_animation.x,  &mut self.menu.size_animation.y, &mut self.menu.focus_y_animation
         ];
-        for items in self.menu.items.iter_mut() {
-            if let Some(sub_menu) = &mut items.sub_menu {
-                animations.push(&mut sub_menu.size_animation.x);
-                animations.push(&mut sub_menu.size_animation.y);
-                animations.push(&mut sub_menu.focus_y_animation);
-            }
-            if let Some(input) = &mut items.input {
-                for animation in input.get_animation() {
-                    animations.push(animation)
-                }
-            }
+        for animation in self.menu.get_animations() {
+            animations.push(animation)
         }
         animations
     }
@@ -750,14 +764,14 @@ impl Editor {
         }
 
         // Specific line camera which derive of the global one to handle text alignement
-        let line_offset = self.get_current_line().alignement_offset;
+        let line_offset = self.get_current_line().alignment_offset;
         let line_camera = Camera::from_with_offset(&self.camera, Vector2::new(-line_offset, 0.));
 
         // draw underline
         for range in &mut self.underline_buffer {
             assert!(range.is_valid());
             let line = &self.lines[range.start.unwrap().y as usize];
-            let line_offset = line.alignement_offset;
+            let line_offset = line.alignment_offset;
             let line_camera = Camera::from_with_offset(&self.camera, Vector2::new(-line_offset, 0.));
             let lines_index = range.get_lines_index(&self.lines);
             let initial_y = range.get_start_y();

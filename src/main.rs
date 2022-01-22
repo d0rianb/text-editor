@@ -44,8 +44,11 @@ pub enum MenuAction {
     Underline,
     Bold,
     OpenSubMenu,
+    CloseMenu,
     PrintWithInput,
     Print(String),
+    NewFile(String),
+    NewFileWithInput(String),
 }
 
 impl fmt::Display for MenuAction {
@@ -58,6 +61,7 @@ impl MenuAction {
             MenuAction::OpenWithInput => MenuAction::Open,
             MenuAction::SaveWithInput => MenuAction::Save,
             MenuAction::PrintWithInput => MenuAction::Print,
+            MenuAction::NewFileWithInput(_) => MenuAction::NewFile,
             _ => MenuAction::Print
         }
     }
@@ -71,7 +75,7 @@ pub enum FocusElement { Editor, Menu(MenuId), MenuInput(MenuId) }
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum EditorEvent {
-    Udpate, Redraw, Focus(FocusElement), MenuItemSelected(MenuAction)
+    Update, Redraw, Focus(FocusElement), MenuItemSelected(MenuAction)
 }
 
 struct EditorWindowHandler {
@@ -91,7 +95,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         helper.request_redraw();
         thread::spawn(move || {
             loop {
-                event_sender.send_event(EditorEvent::Udpate).unwrap();
+                event_sender.send_event(EditorEvent::Update).unwrap();
                 thread::sleep(Duration::from_millis(FRAME_DURATION));
             }
         });
@@ -100,7 +104,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     fn on_user_event(&mut self, helper: &mut WindowHelper<EditorEvent>, user_event: EditorEvent) {
         match user_event {
             EditorEvent::Redraw => helper.request_redraw(),
-            EditorEvent::Udpate => {
+            EditorEvent::Update => {
                 self.editor.update(self.tick_timestamp.elapsed().as_millis() as f32);
                 self.tick_timestamp = Instant::now();
             },
@@ -114,6 +118,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::Underline => self.editor.underline(),
                 MenuAction::Bold => self.editor.bold(),
                 MenuAction::OpenSubMenu => {},
+                MenuAction::CloseMenu => self.editor.menu.close(),
                 MenuAction::Print(text) => println!("{}", text),
                 _ => {}
             }
@@ -171,7 +176,9 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
             match self.focus {
                 FocusElement::Menu(id) => self.editor.get_menu(id).handle_key(keycode, modifiers),
                 FocusElement::Editor => self.editor.handle_key(keycode),
-                FocusElement::MenuInput(id) => self.editor.get_menu(id).send_key_to_input(keycode),
+                FocusElement::MenuInput(id) => {
+                    self.editor.get_menu(id).send_key_to_input(keycode, modifiers)
+                },
             }
         }
         helper.request_redraw();
@@ -199,11 +206,6 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
 
     fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) {
         self.editor.modifiers = state.clone();
-        if self.editor.menu.is_focus() {
-            if let Some(input) = &mut self.editor.menu.get_focused_item().input {
-                input.editor.modifiers = state.clone();
-            }
-        }
     }
 }
 

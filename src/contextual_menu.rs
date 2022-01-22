@@ -27,17 +27,28 @@ pub struct MenuItem {
 
 impl Debug for MenuItem {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "MenuItem : {}", self.title)
+        write!(f, "MenuItem : {} | {}", self.title, self.action.to_string())
     }
 }
 
 impl MenuItem {
-    pub fn new(title: &str, action: MenuAction) -> Self { Self {
-        title: title.to_string(),
-        action,
-        sub_menu: Option::None,
-        input: Option::None,
-    } }
+    pub fn new(title: &str, action: MenuAction) -> Self {
+        Self {
+            title: title.to_string(),
+            action,
+            sub_menu: Option::None,
+            input: Option::None,
+        }
+    }
+
+    pub fn new_with_submenu(title: &str, sub_menu: ContextualMenu) -> Self {
+        Self {
+            title: title.to_string(),
+            action: MenuAction::OpenSubMenu,
+            sub_menu: Some(sub_menu),
+            input: Option::None,
+        }
+    }
 }
 
 pub struct ContextualMenu {
@@ -46,7 +57,7 @@ pub struct ContextualMenu {
     pub items: Vec<MenuItem>,
     pub focus_index: isize,
     system_font: Rc<RefCell<Font>>,
-    formated_items: Vec<Rc<FormattedTextBlock>>,
+    formatted_items: Vec<Rc<FormattedTextBlock>>,
     previous_focus: FocusElement,
     pub event_sender: Option<UserEventSender<EditorEvent>>,
     pub size_animation: Vector2<Option<Animation>>,
@@ -61,7 +72,7 @@ impl ContextualMenu {
             items: vec![],
             focus_index: -1,
             system_font: font,
-            formated_items: vec![],
+            formatted_items: vec![],
             previous_focus: Editor,
             event_sender: Option::None,
             size_animation: Vector2::new(Option::None, Option::None),
@@ -119,21 +130,22 @@ impl ContextualMenu {
             VirtualKeyCode::Right => { if self.focus_item_has_submenu() { self.focus_submenu() } else { self.close() } },
             VirtualKeyCode::Left => self.unfocus(),
             VirtualKeyCode::Return => self.select(),
-            VirtualKeyCode::Escape => self.close(),
+            VirtualKeyCode::Escape => self.event_sender.as_ref().unwrap().send_event(EditorEvent::MenuItemSelected(MenuAction::CloseMenu)).unwrap(),
             VirtualKeyCode::Tab => { if !modifiers.shift() { self.move_down() } else { self.move_up() } },
             _ => self.close()
         }
     }
 
-    pub fn send_key_to_input(&mut self, keycode: VirtualKeyCode) {
+    pub fn send_key_to_input(&mut self, keycode: VirtualKeyCode, modifiers: ModifiersState) {
         if let Some(input) =  &mut self.get_focused_item().input {
+            input.editor.modifiers = modifiers.clone();
             match keycode {
                 VirtualKeyCode::Up => self.move_up(),
                 VirtualKeyCode::Down => self.move_down(),
                 _ => input.handle_key(keycode)
             }
         } else {
-            self.handle_key(keycode, ModifiersState::default());
+            self.handle_key(keycode, modifiers);
         }
     }
 
@@ -155,8 +167,34 @@ impl ContextualMenu {
 
     fn set_focus(&mut self, index: isize) {
         self.focus_index = index;
-        if let Some(sub_menu) = &mut self.get_focused_item().sub_menu { sub_menu.open(); }
-        else if let Some(input) = &mut self.get_focused_item().input { input.focus(); }
+        let item = self.get_focused_item();
+        if let Some(sub_menu) = &mut item.sub_menu { sub_menu.open(); }
+        else if let Some(input) = &mut item.input {
+            match &item.action {
+                MenuAction::OpenWithInput => {}
+                MenuAction::SaveWithInput => {}
+                MenuAction::NewFileWithInput(path) => input.set_placeholder(path),
+                _ => {}
+            }
+            input.focus();
+        }
+    }
+
+    pub fn get_animations(&mut self) -> Vec<&mut Option<Animation>> {
+        let mut animations = vec![&mut self.size_animation.x, &mut self.size_animation.y, &mut self.focus_y_animation];
+        for items in self.items.iter_mut() {
+            if let Some(input) = &mut items.input {
+                for animation in input.get_animations() {
+                    animations.push(animation)
+                }
+            }
+            if let Some(sub_menu) = &mut items.sub_menu {
+               for animation in sub_menu.get_animations() {
+                   animations.push(animation);
+               }
+            }
+        }
+        animations
     }
 
     pub fn get_focused_item(&mut self) -> &mut MenuItem {
@@ -186,17 +224,10 @@ impl ContextualMenu {
     pub fn focus_submenu(&mut self) {
         let id = self.id.clone();
         if let Some(sub_menu) = &mut self.items[self.focus_index as usize].sub_menu {
-            let mut sub_menu_id = id;
-            for level in sub_menu_id.iter_mut() {
-                if *level <= -1 {
-                    *level = self.focus_index;
-                    break }
-            }
-            sub_menu.previous_focus = Menu(id);
-            sub_menu.id = sub_menu_id;
-            sub_menu.focus()
+            sub_menu.set_focus(0);
+            sub_menu.focus();
         } else if let Some(input) = &mut self.items[self.focus_index as usize].input {
-           self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(FocusElement::MenuInput(self.id))).unwrap()
+           // self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(FocusElement::MenuInput(self.id))).unwrap()
         }
     }
 
@@ -211,20 +242,47 @@ impl ContextualMenu {
         }
     }
 
+    fn define_id(&mut self) {
+        let id = self.id.clone();
+        for (i, item) in self.items.iter_mut().enumerate() {
+            if let Some(sub_menu) = &mut item.sub_menu {
+                let mut sub_menu_id = id;
+                for level in sub_menu_id.iter_mut() {
+                    if *level <= -1 {
+                        *level = i as isize;
+                        break;
+                    }
+                }
+                sub_menu.previous_focus = Menu(id);
+                sub_menu.id = sub_menu_id;
+                sub_menu.define_id();
+            }
+        }
+    }
+
     pub fn define_input(&mut self) {
         let es = self.event_sender.clone().unwrap();
-        let id = self.id;
+        let mut id = self.id;
         for item in &mut self.items {
+            if let Some(sub_menu) = &mut item.sub_menu {
+                sub_menu.define_input();
+                id = sub_menu.id;
+            }
             let action_name = item.action.to_string();
-            if action_name.contains("WithInput") && item.input.is_none() {
-                let action = MenuAction::get_fn(&item.action);
-                item.input = Some(Input::new(id, action, es.clone()));
+            if action_name.contains("WithInput") {
+                if item.input.is_none() {
+                    let action = MenuAction::get_fn(&item.action);
+                    item.input = Some(Input::new(id, action, es.clone()));
+                } else {
+                    item.input.as_mut().unwrap().menu_id = id;
+                }
             }
         }
     }
 
     pub fn set_items(&mut self, items: Vec<MenuItem>) {
         self.items = items;
+        self.define_id();
         self.define_input();
         self.update_content();
     }
@@ -235,9 +293,9 @@ impl ContextualMenu {
         self.focus();
     }
 
-    fn width(&self) -> f32 { self.formated_items.iter().map(|ftb| ftb.width()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + 2. * 4. * ITEM_PADDING}
+    fn width(&self) -> f32 { self.formatted_items.iter().map(|ftb| ftb.width()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + 2. * 4. * ITEM_PADDING}
 
-    fn height(&self) -> f32 { (self.formated_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING) * self.items.len() as f32 + ITEM_PADDING}
+    fn height(&self) -> f32 { (self.formatted_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING) * self.items.len() as f32 + ITEM_PADDING}
 
     pub fn computed_width(&self) -> f32 {
         if let Some(animation) = &self.size_animation.x { animation.value } else { self.width() }
@@ -248,7 +306,7 @@ impl ContextualMenu {
     }
 
     pub fn update_content(&mut self) {
-        self.formated_items = self.items
+        self.formatted_items = self.items
             .iter()
             .map(|item| self.system_font.borrow().layout_text(&item.title))
             .collect();
@@ -257,7 +315,7 @@ impl ContextualMenu {
     pub fn render(&mut self, position: Vector2<f32>, graphics: &mut Graphics2D) {
         if !self.is_visible && self.size_animation.y.is_none() || self.items.len() == 0 { return; }
         let width = self.computed_width();
-        let item_height = self.formated_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING;
+        let item_height = self.formatted_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING;
         let height = self.computed_height();
         let mut menu_origin = position;
         let editor_size = self.system_font.borrow().editor_size;
@@ -281,7 +339,7 @@ impl ContextualMenu {
             graphics.draw_text(
                 menu_origin + Vector2::new(2. * ITEM_PADDING, item_height * (i as f32) + ITEM_PADDING),
                 Color::BLACK,
-                &self.formated_items[i]
+                &self.formatted_items[i]
             );
 
         }

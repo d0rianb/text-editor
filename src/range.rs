@@ -162,7 +162,7 @@ impl Range {
         for (i, indices) in self.get_lines_index(lines).iter().enumerate() { // TODO: cache ?
             let line_y = initial_y + i as f32 * font_height;
             let line = &lines[self.get_start_y() as usize + i];
-            let line_offset = line.alignement_offset;
+            let line_offset = line.alignment_offset;
             let line_camera = Camera::from_with_offset(camera, Vector2::new(-line_offset, 0.));
             graphics.draw_rectangle(
                 Rectangle::new(

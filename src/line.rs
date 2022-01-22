@@ -15,8 +15,8 @@ const INITIAL_LINE_CAPACITY: usize = 1024;
 pub struct Line {
     pub buffer: Vec<String>,
     pub font: Rc<RefCell<Font>>,
-    pub alignement: TextAlignment,
-    pub alignement_offset: f32,
+    pub alignment: TextAlignment,
+    pub alignment_offset: f32,
     #[derivative(Debug = "ignore")]
     pub formatted_text_block: Rc<FormattedTextBlock>,
     previous_string: String,
@@ -28,8 +28,8 @@ impl Line {
         Line {
             buffer: Vec::with_capacity(INITIAL_LINE_CAPACITY),
             previous_string: String::new(),
-            alignement: TextAlignment::Left,
-            alignement_offset: 0.,
+            alignment: TextAlignment::Left,
+            alignment_offset: 0.,
             formatted_text_block,
             font,
         }
@@ -46,14 +46,14 @@ impl Line {
         self.buffer.drain(0 .. length - 1);
     }
 
-    pub fn set_alignement(&mut self, alignement: TextAlignment) {
+    pub fn set_alignment(&mut self, alignment: TextAlignment) {
         let editor_width = self.font.borrow().editor_size.x;
-        self.alignement_offset = match alignement {
+        self.alignment_offset = match alignment {
             TextAlignment::Left => 0.,
             TextAlignment::Center => (editor_width - self.formatted_text_block.width()) / 2.,
             TextAlignment::Right => editor_width - self.formatted_text_block.width()
         };
-        self.alignement = alignement;
+        self.alignment = alignment;
     }
 
     pub fn get_text(&self) -> String {
@@ -76,25 +76,25 @@ impl Line {
     pub fn update_text_layout(&mut self) -> i32 { // return the difference of length
         let string = self.get_text();
         let font = self.font.borrow();
-        let font_formated_string = font.format(&string);
+        let font_formatted_string = font.format(&string);
         let mut diff: i32 = 0;
-        if string != font_formated_string  {
+        if string != font_formatted_string {
             diff = self.buffer.len() as i32;
-            self.buffer = font_formated_string
+            self.buffer = font_formatted_string
                 .split("")
                 .map(|c| c.to_string())
                 .filter(|s| s != "")
                 .collect();
             diff -= self.buffer.len() as i32;
         }
-        if font_formated_string != self.previous_string || font.style_changed{
-            self.formatted_text_block = font.layout_text(&font_formated_string);
-            self.previous_string = font_formated_string;
+        if font_formatted_string != self.previous_string || font.style_changed{
+            self.formatted_text_block = font.layout_text(&font_formatted_string);
+            self.previous_string = font_formatted_string;
         }
         diff
     }
 
     pub fn render(&self, x: f32, y: f32, graphics: &mut Graphics2D) {
-        graphics.draw_text(Vector2::new(x + self.alignement_offset, y), Color::BLACK, &self.formatted_text_block);
+        graphics.draw_text(Vector2::new(x + self.alignment_offset, y), Color::BLACK, &self.formatted_text_block);
     }
 }

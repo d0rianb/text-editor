@@ -16,7 +16,7 @@ const ANIMATION_DURATION: f32 = 100.;
 pub struct Input {
     pub editor: Editor,
     is_focus: bool,
-    menu_id: MenuId,
+    pub(crate) menu_id: MenuId,
     action_fn: MenuActionFn,
     width: f32,
     height: f32,
@@ -123,6 +123,10 @@ impl Input {
         self.width = width;
     }
 
+    pub fn set_placeholder(&mut self, text: &str) {
+        self.editor.lines.get_mut(0).unwrap().add_text(text);
+    }
+
     fn submit(&mut self) {
         let result = self.editor.lines.first().unwrap().get_text();
         self.editor.event_sender.as_ref().unwrap().send_event(
@@ -136,7 +140,7 @@ impl Input {
         if let Some(animation) = &self.animation_width { animation.value } else { self.width }
     }
 
-    pub fn get_animation(&mut self) -> Vec<&mut Option<Animation>> {
+    pub fn get_animations(&mut self) -> Vec<&mut Option<Animation>> {
         let mut animations = vec![&mut self.animation_width];
         animations.append(&mut self.editor.get_animations());
         animations
