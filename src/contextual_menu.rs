@@ -8,11 +8,8 @@ use speedy2d::font::FormattedTextBlock;
 use speedy2d::Graphics2D;
 use speedy2d::window::{ModifiersState, UserEventSender, VirtualKeyCode};
 
-use crate::camera::Camera;
-use crate::cursor::{Cursor, CURSOR_OFFSET_X};
-use crate::{EditorEvent, FocusElement, MenuAction, MenuActionFn, MenuId};
+use crate::{Editable, EditorEvent, FocusElement, MenuAction, MenuId};
 use crate::animation::{Animation, EasingFunction};
-use crate::EditorEvent::Focus;
 use crate::FocusElement::{Editor, Menu};
 use crate::font::Font;
 use crate::input::Input;
@@ -72,8 +69,9 @@ impl ContextualMenu {
         }
     }
 
-    pub fn new_with_items(font: Rc<RefCell<Font>>, items: Vec<MenuItem>) -> Self {
+    pub fn new_with_items(font: Rc<RefCell<Font>>, es: UserEventSender<EditorEvent>, items: Vec<MenuItem>) -> Self {
         let mut menu = Self::new(font);
+        menu.event_sender = Some(es);
         menu.set_items(items);
         menu
     }
@@ -127,6 +125,18 @@ impl ContextualMenu {
         }
     }
 
+    pub fn send_key_to_input(&mut self, keycode: VirtualKeyCode) {
+        if let Some(input) =  &mut self.get_focused_item().input {
+            match keycode {
+                VirtualKeyCode::Up => self.move_up(),
+                VirtualKeyCode::Down => self.move_down(),
+                _ => input.handle_key(keycode)
+            }
+        } else {
+            self.handle_key(keycode, ModifiersState::default());
+        }
+    }
+
     fn move_up(&mut self) {
         if !self.is_focus() { return; }
         let mut index = self.focus_index as i32 - 1;
@@ -146,6 +156,7 @@ impl ContextualMenu {
     fn set_focus(&mut self, index: isize) {
         self.focus_index = index;
         if let Some(sub_menu) = &mut self.get_focused_item().sub_menu { sub_menu.open(); }
+        else if let Some(input) = &mut self.get_focused_item().input { input.focus(); }
     }
 
     pub fn get_focused_item(&mut self) -> &mut MenuItem {
@@ -196,28 +207,25 @@ impl ContextualMenu {
         match action {
             MenuAction::OpenSubMenu => self.focus_submenu(),
             MenuAction::Void => {},
-            MenuAction::PrintWithInput => self.toggle_input(MenuAction::Print),
             _ => self.close()
         }
     }
 
-    pub fn toggle_input(&mut self, action: MenuActionFn) {
-        if !self.is_focus() { return; }
+    pub fn define_input(&mut self) {
         let es = self.event_sender.clone().unwrap();
         let id = self.id;
-        let focus_item = self.get_focused_item();
-        if let Some(input) = &mut focus_item.input {
-            input.unfocus();
-            focus_item.input = Option::None;
-        } else {
-            let input = Input::new(id, action, es);
-            focus_item.input = Some(input);
-            focus_item.input.as_ref().unwrap().focus();
+        for item in &mut self.items {
+            let action_name = item.action.to_string();
+            if action_name.contains("WithInput") && item.input.is_none() {
+                let action = MenuAction::get_fn(&item.action);
+                item.input = Some(Input::new(id, action, es.clone()));
+            }
         }
     }
 
     pub fn set_items(&mut self, items: Vec<MenuItem>) {
         self.items = items;
+        self.define_input();
         self.update_content();
     }
 
@@ -255,7 +263,6 @@ impl ContextualMenu {
         let editor_size = self.system_font.borrow().editor_size;
         if menu_origin.x + width > editor_size.x { menu_origin.x -= menu_origin.x + width - editor_size.x }
         if menu_origin.y + height > editor_size.y { menu_origin.y -= menu_origin.y + height - editor_size.y }
-        let border_color: Color = Color::from_int_rgba(150, 150, 150, 250);
         let highlight_color: Color = Color::from_int_rgba(225, 225, 225, 255);
         const BORDER_WIDTH: f32 = 0.5;
         // draw background

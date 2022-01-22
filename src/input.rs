@@ -3,17 +3,19 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
 use speedy2d::window::{UserEventSender, VirtualKeyCode};
-use crate::{Animation, Editable, Editor, EditorEvent, FocusElement, MenuAction, MenuActionFn, MenuId};
+use crate::{Animation, Editable, Editor, EditorEvent, FocusElement, MenuActionFn, MenuId};
 use crate::animation::EasingFunction;
 use crate::camera::Camera;
-use crate::render_helper::{draw_rect_border, draw_rounded_rectangle, draw_rounded_rectangle_with_border};
+use crate::render_helper::draw_rounded_rectangle_with_border;
 
 pub const MIN_INPUT_WIDTH: f32 = 200.;
+pub const MAX_INPUT_WIDTH: f32 = 1000.;
 
 const ANIMATION_DURATION: f32 = 100.;
 
 pub struct Input {
-    pub(crate) editor: Editor,
+    pub editor: Editor,
+    is_focus: bool,
     menu_id: MenuId,
     action_fn: MenuActionFn,
     width: f32,
@@ -30,8 +32,8 @@ impl Editable for Input {
         match keycode {
             VirtualKeyCode::Right => self.move_cursor_relative(1, 0),
             VirtualKeyCode::Left => self.move_cursor_relative(-1, 0),
-            VirtualKeyCode::Up => self.move_cursor_relative(0, -1),
-            VirtualKeyCode::Down => self.move_cursor_relative(0, 1),
+            VirtualKeyCode::Up => {},
+            VirtualKeyCode::Down => {},
             VirtualKeyCode::Backspace => self.delete_char(),
             VirtualKeyCode::Delete => { self.move_cursor_relative(1, 0); self.delete_char(); },
             VirtualKeyCode::Return => self.submit(),
@@ -92,6 +94,7 @@ impl Input {
         editor.set_offset(offset);
         Self {
             editor,
+            is_focus: false,
             menu_id,
             action_fn,
             width: MIN_INPUT_WIDTH,
@@ -100,14 +103,18 @@ impl Input {
         }
     }
 
-    pub fn focus(&self) {
-        let es = self.editor.event_sender.as_ref().unwrap();
-        es.send_event(EditorEvent::Focus(FocusElement::MenuInput(self.menu_id))).unwrap()
+    pub fn focus(&mut self) {
+        self.is_focus = true;
+        self.editor.event_sender.as_ref().unwrap().send_event(
+            EditorEvent::Focus(FocusElement::MenuInput(self.menu_id))
+        ).unwrap()
     }
 
-    pub fn unfocus(&self) {
-        let es = self.editor.event_sender.as_ref().unwrap();
-        es.send_event(EditorEvent::Focus(FocusElement::Menu(self.menu_id))).unwrap()
+    pub fn unfocus(&mut self) {
+        self.is_focus = false;
+        self.editor.event_sender.as_ref().unwrap().send_event(
+            EditorEvent::Focus(FocusElement::Menu(self.menu_id))
+        ).unwrap()
     }
 
     fn set_width(&mut self, width: f32) {
@@ -116,13 +123,13 @@ impl Input {
         self.width = width;
     }
 
-    fn submit(&self) {
+    fn submit(&mut self) {
         let result = self.editor.lines.first().unwrap().get_text();
         self.editor.event_sender.as_ref().unwrap().send_event(
             EditorEvent::MenuItemSelected((self.action_fn)(result))
-        );
+        ).unwrap();
         // TODO: Check if it's valid
-        self.close()
+        self.unfocus();
     }
 
     fn computed_width(&self) -> f32 {
@@ -142,11 +149,12 @@ impl Input {
         if width_left < WIDTH_OFFSET {
             self.set_width(self.width + width_left.abs() + WIDTH_OFFSET);
         } else if width_left >= 1.5 * WIDTH_OFFSET {
-            self.set_width((self.width - WIDTH_OFFSET).max(MIN_INPUT_WIDTH));
+            self.set_width((self.width - WIDTH_OFFSET).clamp(MIN_INPUT_WIDTH, MAX_INPUT_WIDTH));
         }
     }
 
     pub fn render(&mut self, x: f32, y: f32, graphics: &mut Graphics2D) {
+        if !self.is_focus { return; }
         // Draw background
         draw_rounded_rectangle_with_border(x, y, self.computed_width(), self.height, 8., 0.5, Color::from_int_rgba(250, 250, 250, 255), graphics);
         // Draw text

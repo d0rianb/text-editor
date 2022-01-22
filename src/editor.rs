@@ -1,7 +1,6 @@
 use std::{cmp, fs};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::thread::park_timeout;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -24,16 +23,12 @@ use crate::contextual_menu::{ContextualMenu, MenuItem};
 use crate::{Animation, EditorEvent, MenuAction, MenuId};
 use crate::font::Font;
 use crate::line::Line;
-use crate::range::{Range};
+use crate::range::Range;
 use crate::editable::Editable;
-use crate::FocusElement::Menu;
+
 
 pub const EDITOR_PADDING: f32 = 10.;
 pub const EDITOR_OFFSET_TOP: f32 = 55.;
-
-pub fn clamp<T: Ord>(min: T, x: T, max: T) -> T {
-    return cmp::max(min, cmp::min(x, max));
-}
 
 pub struct Editor {
     pub lines: Vec<Line>,
@@ -534,7 +529,7 @@ impl Editor {
     }
 
     fn contextual_submenu_test(&mut self) {
-        let mut sub_menu = ContextualMenu::new_with_items(self.system_font.clone(), vec![
+        let mut sub_menu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), vec![
             MenuItem::new("SubMenu 1", MenuAction::Void),
             MenuItem::new("SubMenu Input", MenuAction::PrintWithInput),
             MenuItem::new("SubMenu 3", MenuAction::Void),

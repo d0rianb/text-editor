@@ -5,7 +5,6 @@ use speedy2d::window::UserEventSender;
 
 use crate::animation::{Animation, EasingFunction};
 use crate::cursor::Cursor;
-use crate::editor::{EDITOR_OFFSET_TOP, EDITOR_PADDING};
 use crate::EditorEvent;
 
 #[derive(Clone)]

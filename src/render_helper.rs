@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
@@ -21,11 +22,12 @@ pub fn draw_rect_border(origin: Vector2<f32>, width: f32, height: f32, thickness
     graphics.draw_line(origin + Vector2::new(0., height), origin, thickness, border_color);
 }
 
+
 #[inline]
 pub fn draw_rounded_rectangle_with_border(x: f32, y: f32, width: f32, height: f32, radius: f32, border_width: f32, color: Color, graphics: &mut Graphics2D) {
-    let border_color = Color::BLACK;
+    lazy_static! { static ref BORDER_COLOR: Color = Color::from_int_rgba(150, 150, 150, 250); }
     // draw border
-    draw_rounded_rectangle(x - border_width, y - border_width, width + 2. * border_width, height + 2. * border_width, radius - border_width, border_color, graphics);
+    draw_rounded_rectangle(x - border_width, y - border_width, width + 2. * border_width, height + 2. * border_width, radius - border_width, *BORDER_COLOR, graphics);
     // draw background
     draw_rounded_rectangle(x, y, width, height, radius, color, graphics);
 }

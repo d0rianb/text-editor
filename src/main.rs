@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate derivative;
+use strum_macros::EnumString;
 
 mod editor;
 mod cursor;
@@ -13,7 +14,7 @@ mod render_helper;
 mod input;
 mod editable;
 
-use std::thread;
+use std::{fmt, thread};
 use std::env;
 use std::time::{Duration, Instant};
 
@@ -21,7 +22,6 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::window::{KeyScancode, ModifiersState, MouseButton, VirtualKeyCode, WindowCreationOptions, WindowHandler, WindowHelper, WindowPosition, WindowSize, WindowStartupInfo};
 use speedy2d::{Graphics2D, Window};
-use speedy2d::font::TextAlignment;
 
 use editor::Editor;
 use crate::animation::Animation;
@@ -31,7 +31,6 @@ use crate::editor::{EDITOR_OFFSET_TOP, EDITOR_PADDING};
 const FPS: u64 = 60;
 const FRAME_DURATION: u64 = 1000 / FPS; // ms
 
-pub type MenuActionFn = fn(String) -> MenuAction;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum MenuAction {
@@ -49,6 +48,22 @@ pub enum MenuAction {
     Print(String),
 }
 
+impl fmt::Display for MenuAction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{:?}", self) }
+}
+
+impl MenuAction {
+    pub fn get_fn(action: &MenuAction) -> MenuActionFn {
+        match action {
+            MenuAction::OpenWithInput => MenuAction::Open,
+            MenuAction::SaveWithInput => MenuAction::Save,
+            MenuAction::PrintWithInput => MenuAction::Print,
+            _ => MenuAction::Print
+        }
+    }
+}
+
+type MenuActionFn = fn(String) -> MenuAction;
 type MenuId = [isize; 3]; // Support 3 nested menu
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -58,7 +73,6 @@ pub enum FocusElement { Editor, Menu(MenuId), MenuInput(MenuId) }
 pub enum EditorEvent {
     Udpate, Redraw, Focus(FocusElement), MenuItemSelected(MenuAction)
 }
-
 
 struct EditorWindowHandler {
     editor: Editor,
@@ -157,7 +171,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
             match self.focus {
                 FocusElement::Menu(id) => self.editor.get_menu(id).handle_key(keycode, modifiers),
                 FocusElement::Editor => self.editor.handle_key(keycode),
-                FocusElement::MenuInput(id) => self.editor.get_menu(id).get_focused_item().input.as_mut().unwrap().handle_key(keycode),
+                FocusElement::MenuInput(id) => self.editor.get_menu(id).send_key_to_input(keycode),
             }
         }
         helper.request_redraw();
