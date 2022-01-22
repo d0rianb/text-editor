@@ -168,7 +168,10 @@ impl ContextualMenu {
     fn set_focus(&mut self, index: isize) {
         self.focus_index = index;
         let item = self.get_focused_item();
-        if let Some(sub_menu) = &mut item.sub_menu { sub_menu.open(); }
+        if let Some(sub_menu) = &mut item.sub_menu {
+            sub_menu.open();
+            sub_menu.set_focus(0);
+        }
         else if let Some(input) = &mut item.input {
             match &item.action {
                 MenuAction::OpenWithInput => {}

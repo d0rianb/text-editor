@@ -97,13 +97,14 @@ impl Input {
             is_focus: false,
             menu_id,
             action_fn,
-            width: MIN_INPUT_WIDTH,
+            width: 0.,
             height: 50.,
             animation_width: Option::None
         }
     }
 
     pub fn focus(&mut self) {
+        if self.width == 0. { self.set_width(MIN_INPUT_WIDTH); }
         self.is_focus = true;
         self.editor.event_sender.as_ref().unwrap().send_event(
             EditorEvent::Focus(FocusElement::MenuInput(self.menu_id))
@@ -111,6 +112,7 @@ impl Input {
     }
 
     pub fn unfocus(&mut self) {
+        self.set_width(0.);
         self.is_focus = false;
         self.editor.event_sender.as_ref().unwrap().send_event(
             EditorEvent::Focus(FocusElement::Menu(self.menu_id))
@@ -124,7 +126,11 @@ impl Input {
     }
 
     pub fn set_placeholder(&mut self, text: &str) {
+        self.select_all();
+        self.delete_selection();
         self.editor.lines.get_mut(0).unwrap().add_text(text);
+        self.move_cursor(Vector2::new(text.len() as u32, 0));
+        self.update_text_layout();
     }
 
     fn submit(&mut self) {
@@ -151,9 +157,9 @@ impl Input {
         let width_left = self.width - self.editor.lines.first().unwrap().formatted_text_block.width();
         const WIDTH_OFFSET: f32 = 25.;
         if width_left < WIDTH_OFFSET {
-            self.set_width(self.width + width_left.abs() + WIDTH_OFFSET);
-        } else if width_left >= 1.5 * WIDTH_OFFSET {
-            self.set_width((self.width - WIDTH_OFFSET).clamp(MIN_INPUT_WIDTH, MAX_INPUT_WIDTH));
+            self.set_width((self.width + WIDTH_OFFSET - width_left).clamp(MIN_INPUT_WIDTH, MAX_INPUT_WIDTH));
+        } else if width_left >= WIDTH_OFFSET {
+            self.set_width((self.width - width_left + WIDTH_OFFSET).clamp(MIN_INPUT_WIDTH, MAX_INPUT_WIDTH));
         }
     }
 

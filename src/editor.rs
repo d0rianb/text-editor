@@ -205,8 +205,8 @@ impl Editable for Editor {
             'D' => { self.select_current_word(); self.delete_selection() },
             '+' | '=' => self.increase_font_size(),
             '-' => self.decrease_font_size(),
-            'n' => self.contextual_submenu_test(),
-            // 'n' => self.new_file_popup(),
+            // 'n' => self.contextual_submenu_test(),
+            'n' => self.new_file_popup(),
             _ => {}
         }
     }
@@ -628,12 +628,12 @@ impl Editor {
     }
 
     fn get_recent_paths(&self) -> Vec<(String, String)> {
-        lazy_static! { static ref NAME_REGEX: Regex = Regex::new(r"([a-zA-Z0-9_-]+).(\w+)$").unwrap(); }
+        lazy_static! { static ref NAME_REGEX: Regex = Regex::new(r"(\w+)/?$").unwrap(); }
         let folder_yaml = self.get_prefs_key("recent_folders");
         let folder: Vec<&str> = folder_yaml.as_vec().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
         let folder_with_names: Vec<(String, String)> = folder.iter().map(|f| {
             let file_name: String = NAME_REGEX.captures(*f).unwrap().get(0).unwrap().as_str().to_string() + "/";
-            (file_name, String::from(*f))
+            (file_name, String::from(*f) + "/")
         }).collect();
         folder_with_names
     }
@@ -737,9 +737,7 @@ impl Editor {
                     anim.start();
                 }
                 anim.update(dt);
-                if anim.is_ended {
-                    *animation = Option::None;
-                }
+                if anim.is_ended { *animation = Option::None; }
             }
         }
     }

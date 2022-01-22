@@ -200,7 +200,6 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 _ => {}
             }
             helper.request_redraw();
-
         }
     }
 
