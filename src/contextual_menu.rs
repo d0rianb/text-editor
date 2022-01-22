@@ -12,7 +12,7 @@ use crate::{Editable, EditorEvent, FocusElement, MenuAction, MenuId};
 use crate::animation::{Animation, EasingFunction};
 use crate::FocusElement::{Editor, Menu};
 use crate::font::Font;
-use crate::input::Input;
+use crate::input::{Input, Validator};
 use crate::render_helper::{draw_rounded_rectangle, draw_rounded_rectangle_with_border};
 
 const ITEM_PADDING: f32 = 5.;
@@ -168,15 +168,12 @@ impl ContextualMenu {
     fn set_focus(&mut self, index: isize) {
         self.focus_index = index;
         let item = self.get_focused_item();
-        if let Some(sub_menu) = &mut item.sub_menu {
-            sub_menu.open();
-            sub_menu.set_focus(0);
-        }
+        if let Some(sub_menu) = &mut item.sub_menu { sub_menu.open(); }
         else if let Some(input) = &mut item.input {
             match &item.action {
-                MenuAction::OpenWithInput => {}
-                MenuAction::SaveWithInput => {}
-                MenuAction::NewFileWithInput(path) => input.set_placeholder(path),
+                MenuAction::SaveWithInput(path)
+                | MenuAction::NewFileWithInput(path)
+                | MenuAction::OpenWithInput(path)=> { input.set_placeholder(path); input.set_validator(Validator::File) },
                 _ => {}
             }
             input.focus();
@@ -216,6 +213,7 @@ impl ContextualMenu {
     pub fn focus(&mut self) {
         self.focus_index = 0;
         self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(Menu(self.id))).unwrap();
+        self.set_focus(0);
     }
 
     pub fn unfocus(&mut self) {
@@ -225,12 +223,10 @@ impl ContextualMenu {
     }
 
     pub fn focus_submenu(&mut self) {
-        let id = self.id.clone();
         if let Some(sub_menu) = &mut self.items[self.focus_index as usize].sub_menu {
-            sub_menu.set_focus(0);
             sub_menu.focus();
-        } else if let Some(input) = &mut self.items[self.focus_index as usize].input {
-           // self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(FocusElement::MenuInput(self.id))).unwrap()
+        } else if let Some(_input) = &mut self.items[self.focus_index as usize].input {
+           self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(FocusElement::MenuInput(self.id))).unwrap()
         }
     }
 

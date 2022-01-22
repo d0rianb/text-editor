@@ -1,4 +1,4 @@
-use std::{cmp, fs};
+use std::{cmp, fs, path};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -308,7 +308,7 @@ impl Editable for Editor {
     fn paste(&mut self) {
         if self.selection.is_valid() { self.delete_selection(); }
         let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
-        let clipboard_content = ctx.get_contents();
+        let clipboard_content = ctx.get_contents().unwrap();
         dbg!(clipboard_content);
         // TODO: match on clipboard content
         if self.copy_buffer.is_empty() { return; }
@@ -529,8 +529,8 @@ impl Editor {
         if id[0] <= -1 { &mut self.menu } else { self.menu.items[id[0] as usize].sub_menu.as_mut().unwrap() }
     }
 
-    fn contextual_submenu_test(&mut self) {
-        let mut sub_menu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), vec![
+    fn _contextual_submenu_test(&mut self) {
+        let sub_menu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), vec![
             MenuItem::new("SubMenu 1", MenuAction::Void),
             MenuItem::new("SubMenu Input", MenuAction::PrintWithInput),
             MenuItem::new("SubMenu 3", MenuAction::Void),
@@ -645,10 +645,17 @@ impl Editor {
         }
         let new_file_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
         let items = vec![
-            MenuItem::new("New Empty File", MenuAction::NewFile("new-file".into())),
+            MenuItem::new("New Empty File", MenuAction::NewFile("new-file.txt".into())),
             MenuItem::new_with_submenu("New File ...", new_file_submenu),
         ];
         self.menu.open_with(items);
+    }
+
+    pub fn new_file(&mut self, path: &str) {
+        self.select_all();
+        self.delete_selection();
+        self.save_to_file(path);
+        self.load_file(path);
     }
 
     /// Ask for the filepath if there is no one specified else save to the current one
@@ -656,19 +663,25 @@ impl Editor {
         if let Some(f) = self.filepath.clone() {
             self.save_to_file(&f);
         } else {
-            let recent_files = self.get_recent_files();
-            let mut menu_items = vec![MenuItem::new("Save to ...".into(), MenuAction::Void)];
-            for (name, path) in recent_files {
-                menu_items.push(MenuItem::new(&name, MenuAction::Save(path)));
+            let mut path_items = vec![];
+            for (name, path) in self.get_recent_paths() {
+                path_items.push(MenuItem::new(&name, MenuAction::SaveWithInput(path)));
             }
-            self.menu.open_with(menu_items);
+            let path_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
+            let mut file_items = vec![MenuItem::new_with_submenu("Save to >".into(), path_submenu)];
+            for (name, path) in self.get_recent_files() {
+                file_items.push(MenuItem::new(&name, MenuAction::Save(path)));
+            }
+            self.menu.open_with(file_items);
         }
     }
 
     /// Save to a specific file
     pub fn save_to_file(&mut self, filepath: &str) {
-        // TODO: check that the path is valid
-        let valid_filepath = fs::canonicalize(filepath).expect("Invalid filepath");
+        let path = path::Path::new(filepath);
+        if let Some(prefix) = path.parent() { fs::create_dir_all(prefix).unwrap(); }
+        if !path.is_file() { fs::File::create(path).unwrap(); }
+        let valid_filepath = fs::canonicalize(path).expect("Invalid filepath");
         self.filepath = Some(filepath.into());
         let mut data = String::new();
         for (i, line) in (&self.lines).iter().enumerate() {
@@ -680,9 +693,13 @@ impl Editor {
 
     /// Ask for the filepath to load
     pub fn load(&mut self) {
-        let recent_files = self.get_recent_files();
-        let mut menu_items = vec![MenuItem::new("Open ...".into(), MenuAction::Void)];
-        for (name, path) in recent_files {
+        let mut path_items = vec![];
+        for (name, path) in self.get_recent_paths() {
+            path_items.push(MenuItem::new(&name, MenuAction::OpenWithInput(path)));
+        }
+        let path_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
+        let mut menu_items = vec![MenuItem::new_with_submenu("Open ...".into(), path_submenu)];
+        for (name, path) in self.get_recent_files() {
             menu_items.push(MenuItem::new(&name, MenuAction::Open(path)));
         }
         self.menu.open_with(menu_items);

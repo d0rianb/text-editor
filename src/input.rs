@@ -1,9 +1,13 @@
 use std::rc::Rc;
+use lazy_static::lazy_static;
+use regex::Regex;
+
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
 use speedy2d::window::{UserEventSender, VirtualKeyCode};
-use crate::{Animation, Editable, Editor, EditorEvent, FocusElement, MenuActionFn, MenuId};
+
+use crate::{Animation, Editable, Editor, EditorEvent, FocusElement, MenuAction, MenuActionFn, MenuId};
 use crate::animation::EasingFunction;
 use crate::camera::Camera;
 use crate::render_helper::draw_rounded_rectangle_with_border;
@@ -13,6 +17,13 @@ pub const MAX_INPUT_WIDTH: f32 = 1000.;
 
 const ANIMATION_DURATION: f32 = 100.;
 
+#[allow(unused)]
+pub enum Validator {
+    File,
+    Path,
+    None
+}
+
 pub struct Input {
     pub editor: Editor,
     is_focus: bool,
@@ -20,7 +31,8 @@ pub struct Input {
     action_fn: MenuActionFn,
     width: f32,
     height: f32,
-    animation_width: Option<Animation>
+    validator: Validator,
+    animation_width: Option<Animation>,
 }
 
 impl Editable for Input {
@@ -46,7 +58,10 @@ impl Editable for Input {
 
     fn move_cursor(&mut self, position: Vector2<u32>) { self.editor.move_cursor(position) }
 
-    fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) { self.editor.move_cursor_relative(rel_x, rel_y) }
+    fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
+        if self.editor.cursor.x as i32 + rel_x < 0 { return self.unfocus(); }
+        self.editor.move_cursor_relative(rel_x, rel_y)
+    }
 
     fn shortcut(&mut self, c: char) {
         match c {
@@ -99,6 +114,7 @@ impl Input {
             action_fn,
             width: 0.,
             height: 50.,
+            validator: Validator::None,
             animation_width: Option::None
         }
     }
@@ -133,13 +149,29 @@ impl Input {
         self.update_text_layout();
     }
 
+    pub fn set_validator(&mut self, validator: Validator) {
+        self.validator = validator;
+    }
+
+    fn validate(&self, text: &str) -> bool {
+        lazy_static! { static ref FILE_REGEX: Regex = Regex::new(r".txt$").unwrap(); }
+        match self.validator {
+            Validator::File => FILE_REGEX.is_match(text),
+            Validator::None => true,
+            _ => false,
+        }
+    }
+
     fn submit(&mut self) {
         let result = self.editor.lines.first().unwrap().get_text();
+        if !self.validate(&result) { return; } // TODO: error
         self.editor.event_sender.as_ref().unwrap().send_event(
             EditorEvent::MenuItemSelected((self.action_fn)(result))
         ).unwrap();
-        // TODO: Check if it's valid
         self.unfocus();
+        self.editor.event_sender.as_ref().unwrap().send_event(
+            EditorEvent::MenuItemSelected(MenuAction::CloseMenu)
+        ).unwrap();
     }
 
     fn computed_width(&self) -> f32 {

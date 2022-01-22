@@ -35,9 +35,9 @@ const FRAME_DURATION: u64 = 1000 / FPS; // ms
 #[derive(PartialEq, Debug, Clone)]
 pub enum MenuAction {
     Open(String),
-    OpenWithInput,
+    OpenWithInput(String),
     Save(String),
-    SaveWithInput,
+    SaveWithInput(String),
     Void,
     Exit,
     CancelChip,
@@ -58,8 +58,8 @@ impl fmt::Display for MenuAction {
 impl MenuAction {
     pub fn get_fn(action: &MenuAction) -> MenuActionFn {
         match action {
-            MenuAction::OpenWithInput => MenuAction::Open,
-            MenuAction::SaveWithInput => MenuAction::Save,
+            MenuAction::OpenWithInput(_) => MenuAction::Open,
+            MenuAction::SaveWithInput(_) => MenuAction::Save,
             MenuAction::PrintWithInput => MenuAction::Print,
             MenuAction::NewFileWithInput(_) => MenuAction::NewFile,
             _ => MenuAction::Print
@@ -115,6 +115,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::CancelChip => self.editor.cancel_chip(),
                 MenuAction::Open(path) => self.editor.load_file(&path),
                 MenuAction::Save(path) => self.editor.save_to_file(&path),
+                MenuAction::NewFile(path) => self.editor.new_file(&path),
                 MenuAction::Underline => self.editor.underline(),
                 MenuAction::Bold => self.editor.bold(),
                 MenuAction::OpenSubMenu => {},
@@ -171,7 +172,6 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
 
     fn on_key_down(&mut self, helper: &mut WindowHelper<EditorEvent>, virtual_key_code: Option<VirtualKeyCode>, _scancode: KeyScancode) {
         let modifiers = self.editor.modifiers.clone();
-        // TODO: Move in struct impl
         if let Some(keycode) = virtual_key_code {
             match self.focus {
                 FocusElement::Menu(id) => self.editor.get_menu(id).handle_key(keycode, modifiers),
