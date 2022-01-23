@@ -176,9 +176,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
             match self.focus {
                 FocusElement::Menu(id) => self.editor.get_menu(id).handle_key(keycode, modifiers),
                 FocusElement::Editor => self.editor.handle_key(keycode),
-                FocusElement::MenuInput(id) => {
-                    self.editor.get_menu(id).send_key_to_input(keycode, modifiers)
-                },
+                FocusElement::MenuInput(id) => self.editor.get_menu(id).send_key_to_input(keycode, modifiers),
             }
         }
         helper.request_redraw();

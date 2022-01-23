@@ -5,7 +5,7 @@
  - cmd-Z
  - Intervert line with cmd + ctrl
  - cmd-r --> dynamic research
- - support for non monospace font
+ - support for non monospace font - ?
  - find/replace
  - preferences
  - rework font

@@ -190,6 +190,18 @@ impl Editable for Editor {
             }
         }
 
+        if self.selection.is_valid() {
+            if rel_x > 0 || rel_y < 0 {
+                self.move_cursor(self.selection.get_real_end().unwrap());
+                self.selection.reset();
+                return;
+            } else if rel_x < 0 || rel_y > 0 {
+                self.move_cursor(self.selection.get_real_start().unwrap());
+                self.selection.reset();
+                return;
+            }
+        }
+
         if new_x < 0 {
             // Go to line before
             if self.cursor.y == 0 { return; }
@@ -384,73 +396,7 @@ impl Editor {
         Vector2::new(x, y)
     }
 
-    pub fn move_cursor(&mut self, position: Vector2<u32>) {
-        assert!(self.lines.len() > 0);
-        let pos = self.get_valid_cursor_position(position);
-        if pos.x != self.cursor.x || pos.y != self.cursor.y {
-            self.cursor.move_to(pos.x, pos.y);
-        }
-    }
-
-    pub fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
-        let max_y = self.lines.len() as i32 - 1;
-        let mut new_x = (self.cursor.x as i32 + rel_x) as i32;
-        let mut new_y = (self.cursor.y as i32 + rel_y).clamp(0, max_y);
-
-        if self.modifiers.shift() && self.selection.start.is_none() {
-            self.selection.start(Vector2::new(self.cursor.x, self.cursor.y));
-        }
-
-        if self.modifiers.alt() {
-            // Move to the next word
-            let (start, end) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
-            if rel_x < 0 && start != self.cursor.x  {
-                new_x = start as i32;
-            } else if rel_x > 0 && end != self.cursor.x  {
-                new_x = end as i32;
-            }
-        } else if self.modifiers.logo() {
-            if rel_x < 0  {
-                new_x = 0;
-            } else if rel_x > 0 {
-                new_x = self.lines[self.cursor.y as usize].buffer.len() as i32;
-            }
-            if rel_y < 0 {
-                new_y = 0;
-            } else if rel_y > 0 {
-                new_y = self.lines.len() as i32 - 1;
-            }
-        }
-
-        if new_x < 0 {
-            // Go to line before
-            if self.cursor.y == 0 { return self.update_camera(); }
-            let previous_line_buffer_size = self.lines[self.cursor.y as usize - 1].buffer.len() as u32;
-            self.cursor.move_to(previous_line_buffer_size, self.cursor.y - 1);
-        } else if new_x as usize > self.get_current_buffer().len() {
-            // Go to line after
-            if self.cursor.y as usize >= self.lines.len() - 1 { return; }
-            self.cursor.move_to(0, self.cursor.y + 1);
-        } else {
-            // Classic move inside a line
-            // Check if x if inside new_y buffer limits
-            let new_buffer_len = self.lines[new_y as usize].buffer.len() as i32;
-            if new_x >= new_buffer_len {
-                self.cursor.move_to(new_buffer_len as u32, new_y as u32);
-            } else {
-                self.cursor.move_to(new_x as u32, new_y as u32);
-            }
-        }
-        // Update selection
-        if self.modifiers.shift() {
-            self.selection.end(Vector2::new(self.cursor.x, self.cursor.y));
-        } else if (rel_x.abs() > 0 || rel_y.abs() > 0) && self.selection.is_valid() {
-            self.selection.reset();
-        }
-        self.update_camera();
-    }
-
-    pub(crate) fn update_camera(&mut self) {
+    pub fn update_camera(&mut self) {
         // Horizontal Scroll
         if self.camera.get_cursor_x_with_offset(&self.cursor) < self.camera.computed_x() + self.camera.safe_zone_size {
             self.camera.move_x(self.camera.get_cursor_x_with_offset(&self.cursor) - self.camera.computed_x() - self.camera.safe_zone_size)
