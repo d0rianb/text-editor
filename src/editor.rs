@@ -1,6 +1,7 @@
-use std::{cmp, fs, path};
+use std::{cmp, env, fs};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::path::{Path, PathBuf};
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -42,10 +43,37 @@ pub struct Editor {
     pub filepath: Option<String>,
     pub event_sender: Option<UserEventSender<EditorEvent>>,
     pub selection: Range,
-    pub copy_buffer: Vec<String>,
     pub underline_buffer: Vec<Range>,
     pub bold_buffer: Vec<Range>,
     pub menu: ContextualMenu,
+}
+
+impl Editor {
+    pub fn new(width: f32, height: f32, offset: Vector2<f32>, padding: f32) -> Self {
+        let font = Rc::new(RefCell::new(Font::new(
+            include_bytes!("../resources/font/CourierRegular.ttf"),
+            // "resources/font/Monaco.ttf",
+            width - offset.x - padding*2.,
+            height - offset.y - padding*2.,
+        )));
+        let system_font = Rc::new(RefCell::new(Font::new(include_bytes!("../resources/font/Roboto-Regular.ttf"), width, height)));
+        Self {
+            cursor: Cursor::new(0, 0, Rc::clone(&font)),
+            camera: Camera::new(width, height, offset.clone(), padding),
+            offset,
+            padding,
+            lines: vec![Line::new(Rc::clone(&font))],
+            font,
+            system_font: system_font.clone(),
+            modifiers: ModifiersState::default(),
+            filepath: Option::None,
+            event_sender: Option::None,
+            selection: Range::default(),
+            underline_buffer: vec![],
+            bold_buffer: vec![],
+            menu: ContextualMenu::new(system_font),
+        }
+    }
 }
 
 impl Editable for Editor {
@@ -129,6 +157,7 @@ impl Editable for Editor {
         if pos.x != self.cursor.x || pos.y != self.cursor.y {
             self.cursor.move_to(pos.x, pos.y);
         }
+        self.update_camera();
     }
 
     fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
@@ -289,7 +318,7 @@ impl Editable for Editor {
     fn copy(&mut self) {
         if !self.selection.is_valid() { return; }
         let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
-        self.copy_buffer = vec![];
+        let mut buffer = vec![];
         let lines_index = self.selection.get_lines_index(&self.lines);
         let initial_y = self.selection.get_start_y();
         for (i, (start, end)) in lines_index.iter().enumerate() {
@@ -300,20 +329,17 @@ impl Editable for Editor {
                 if let Some(bt) = buffer_text { text.push_str(bt); }
             }
             text.push_str("\n");
-            self.copy_buffer.push(text);
+            buffer.push(text);
         }
-        ctx.set_contents(self.copy_buffer.join("")).unwrap();
+        ctx.set_contents(buffer.join("")).unwrap();
     }
 
     fn paste(&mut self) {
         if self.selection.is_valid() { self.delete_selection(); }
         let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
         let clipboard_content = ctx.get_contents().unwrap();
-        dbg!(clipboard_content);
-        // TODO: match on clipboard content
-        if self.copy_buffer.is_empty() { return; }
-        let buffer_text = self.copy_buffer.join("");
-        let mut lines = buffer_text.split("\n").filter(|c| *c != "");
+        if clipboard_content.is_empty() { return; }
+        let mut lines = clipboard_content.split("\n").filter(|c| *c != "");
         let mut text = lines.next();
         while text.is_some() {
             self.lines[self.cursor.y as usize].add_text(text.unwrap());
@@ -328,33 +354,6 @@ impl Editable for Editor {
 }
 
 impl Editor {
-    pub fn new(width: f32, height: f32, offset: Vector2<f32>, padding: f32) -> Self {
-        let font = Rc::new(RefCell::new(Font::new(
-            include_bytes!("../resources/font/CourierRegular.ttf"),
-            // "resources/font/Monaco.ttf",
-            width - offset.x - padding*2.,
-            height - offset.y - padding*2.,
-        )));
-        let system_font = Rc::new(RefCell::new(Font::new(include_bytes!("../resources/font/Roboto-Regular.ttf"), width, height)));
-        Self {
-            cursor: Cursor::new(0, 0, Rc::clone(&font)),
-            camera: Camera::new(width, height, offset.clone(), padding),
-            offset,
-            padding,
-            lines: vec![Line::new(Rc::clone(&font))],
-            font,
-            system_font: system_font.clone(),
-            modifiers: ModifiersState::default(),
-            filepath: Option::None,
-            event_sender: Option::None,
-            selection: Range::default(),
-            copy_buffer: vec![],
-            underline_buffer: vec![],
-            bold_buffer: vec![],
-            menu: ContextualMenu::new(system_font),
-        }
-    }
-
     pub fn set_event_sender(&mut self, es: Option<UserEventSender<EditorEvent>>) {
         self.event_sender = es.clone();
         self.cursor.event_sender = es.clone();
@@ -425,12 +424,12 @@ impl Editor {
 
         if new_x < 0 {
             // Go to line before
-            if self.cursor.y == 0 { return; }
+            if self.cursor.y == 0 { return self.update_camera(); }
             let previous_line_buffer_size = self.lines[self.cursor.y as usize - 1].buffer.len() as u32;
             self.cursor.move_to(previous_line_buffer_size, self.cursor.y - 1);
         } else if new_x as usize > self.get_current_buffer().len() {
             // Go to line after
-            if self.cursor.y as usize >= self.lines.len() - 1 {return; }
+            if self.cursor.y as usize >= self.lines.len() - 1 { return; }
             self.cursor.move_to(0, self.cursor.y + 1);
         } else {
             // Classic move inside a line
@@ -452,11 +451,17 @@ impl Editor {
     }
 
     fn update_camera(&mut self) {
+        // Horizontal Scroll
+        if self.camera.get_cursor_real_x(&self.cursor) < self.camera.computed_x() + self.camera.safe_zone_size {
+            self.camera.move_x(self.camera.get_cursor_real_x(&self.cursor) - self.camera.computed_x() - self.camera.safe_zone_size)
+        } else if self.padding + self.cursor.real_x() - self.camera.computed_x() > self.camera.width - self.camera.safe_zone_size {
+            self.camera.move_x(self.padding + self.cursor.real_x() - self.camera.computed_x() - self.camera.width + self.camera.safe_zone_size)
+        }
         // Vertical Scroll
-        if self.camera.get_cursor_real_y(&self.cursor) < self.camera.computed_y() + self.camera.safe_zone_size {
-            self.camera.move_y(self.camera.get_cursor_real_y(&self.cursor) - self.camera.computed_y() - self.camera.safe_zone_size)
-        } else if self.padding + self.cursor.computed_y() - self.camera.computed_y() > self.camera.height - self.camera.safe_zone_size {
-            self.camera.move_y(self.padding + self.cursor.computed_y() - self.camera.computed_y() - self.camera.height + self.camera.safe_zone_size)
+        if self.camera.get_cursor_y_with_offset(&self.cursor) < self.camera.computed_y() + self.camera.safe_zone_size {
+            self.camera.move_y(self.camera.get_cursor_y_with_offset(&self.cursor) - self.camera.computed_y() - self.camera.safe_zone_size)
+        } else if self.padding + self.cursor.real_y() - self.camera.computed_y() > self.camera.height - self.camera.safe_zone_size {
+            self.camera.move_y(self.padding + self.cursor.real_y() - self.camera.computed_y() - self.camera.height + self.camera.safe_zone_size)
         }
     }
 
@@ -609,10 +614,16 @@ impl Editor {
 
     fn get_prefs_key(&self, key: &str) -> Yaml {
         lazy_static! {
-            static ref PREFS_STR: String = fs::read_to_string("resources/prefs.yaml").expect("Can't find the preference file");
+            static ref PREFS_PATH: &'static Path = Path::new("./resources/prefs.yaml");
+            static ref PREFS_STR: String = fs::read_to_string(PREFS_PATH.clone()).expect("Can't find the preference file");
             static ref DOCS: Vec<Yaml> = YamlLoader::load_from_str(&PREFS_STR).expect("Invalid preferences");
             static ref PREFS: &'static Yaml = DOCS.get(0).unwrap();
         }
+        // let PREFS_PATH = env::current_exe().unwrap().parent().unwrap().join(Path::new("resources/prefs.yaml")).into_boxed_path();
+        // dbg!(&PREFS_PATH);
+        // let PREFS_STR: String = fs::read_to_string(PREFS_PATH.clone()).expect("Can't find the preference file");
+        // let DOCS: Vec<Yaml> = YamlLoader::load_from_str(&PREFS_STR).expect("Invalid preferences");
+        // let PREFS = DOCS.get(0).unwrap();
         PREFS[key].clone()
     }
 
@@ -678,7 +689,7 @@ impl Editor {
 
     /// Save to a specific file
     pub fn save_to_file(&mut self, filepath: &str) {
-        let path = path::Path::new(filepath);
+        let path = Path::new(filepath);
         if let Some(prefix) = path.parent() { fs::create_dir_all(prefix).unwrap(); }
         if !path.is_file() { fs::File::create(path).unwrap(); }
         let valid_filepath = fs::canonicalize(path).expect("Invalid filepath");
@@ -720,6 +731,11 @@ impl Editor {
                 self.lines.push(Line::new(Rc::clone(&self.font)));
             }
             self.lines[i].add_text(line);
+        }
+        let mut i : usize = self.lines.len() - 1;
+        while i >= 0 && self.lines[i].is_empty() { // Remove the empty lines at the end of the file
+            self.lines.pop();
+            i -= 1;
         }
         self.cursor.move_to(0, 0);
         self.update_text_layout();

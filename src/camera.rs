@@ -93,8 +93,12 @@ impl Camera {
         Vector2::new(self.computed_x(), self.computed_y())
     }
 
-    pub fn get_cursor_real_y(&self, cursor: &Cursor) -> f32 {
-        cursor.computed_y() + self.initial_y - cursor.font.borrow().char_height
+    pub fn get_cursor_real_x(&self, cursor: &Cursor) -> f32 {
+        cursor.real_x() + self.initial_x - cursor.font.borrow().char_width
+    }
+
+    pub fn get_cursor_y_with_offset(&self, cursor: &Cursor) -> f32 {
+        cursor.real_y() + self.initial_y - cursor.font.borrow().char_height
     }
 
     fn transition(&mut self, x: f32, y: f32) {

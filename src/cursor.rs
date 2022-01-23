@@ -50,12 +50,19 @@ impl Cursor {
         self.y = y;
     }
 
+    /// The cursor theorical position
+    pub fn real_x(&self) -> f32 { self.x as f32 * self.font.borrow().char_width }
+
+    /// The cursor position computed by the animation
     pub fn computed_x(&self) -> f32 {
-        if let Some(animation) = &self.animation.x { animation.value } else { self.x as f32 * self.font.borrow().char_width }
+        if let Some(animation) = &self.animation.x { animation.value } else { self.real_x() }
     }
 
+    pub fn real_y(&self) -> f32 { self.y as f32 * self.font.borrow().char_height }
+
+    /// The cursor position computed by the animation
     pub fn computed_y(&self) -> f32 {
-        if let Some(animation) = &self.animation.y { animation.value } else { self.y as f32 * self.font.borrow().char_height }
+        if let Some(animation) = &self.animation.y { animation.value } else { self.real_y() }
     }
 
     pub fn position(&self) -> Vector2<f32> {

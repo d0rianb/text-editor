@@ -136,13 +136,8 @@ impl Range {
     pub fn get_lines_index(&mut self, lines: &[Line]) -> Vec<(u32, u32)> {
         // relative index of selection starting in the self.start.y index
         if !self.is_valid() { return vec![]; }
-        let mut start = self.start.unwrap();
-        let mut end = self.end.unwrap();
-        if start.y > end.y {
-            let temp = start;
-            start = end;
-            end = temp;
-        }
+        let start = self.get_real_start().unwrap();
+        let end = self.get_real_end().unwrap();
         let mut result = vec![];
         for y in start.y..=end.y {
             if y == start.y {

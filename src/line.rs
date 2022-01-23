@@ -41,9 +41,14 @@ impl Line {
         }
     }
 
+    /// Empty the mline buffer
     pub fn empty(&mut self) {
         let length = self.buffer.len();
         self.buffer.drain(0 .. length - 1);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buffer.join("") == ""
     }
 
     pub fn set_alignment(&mut self, alignment: TextAlignment) {
