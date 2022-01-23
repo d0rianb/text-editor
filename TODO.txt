@@ -10,5 +10,4 @@
  - preferences
  - rework font
  - submenu/inputs
- - x camera movements
  - relative path in build

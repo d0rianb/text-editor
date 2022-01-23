@@ -5,6 +5,7 @@ use regex::Regex;
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
+use speedy2d::shape::Rectangle;
 use speedy2d::window::{UserEventSender, VirtualKeyCode};
 
 use crate::{Animation, Editable, Editor, EditorEvent, FocusElement, MenuAction, MenuActionFn, MenuId};
@@ -13,7 +14,7 @@ use crate::camera::Camera;
 use crate::render_helper::draw_rounded_rectangle_with_border;
 
 pub const MIN_INPUT_WIDTH: f32 = 200.;
-pub const MAX_INPUT_WIDTH: f32 = 1000.;
+pub const MAX_INPUT_WIDTH: f32 = 500.;
 
 const ANIMATION_DURATION: f32 = 100.;
 
@@ -104,9 +105,10 @@ impl Input {
     pub fn new(menu_id: MenuId, action_fn: MenuActionFn, es: UserEventSender<EditorEvent>) -> Self {
         let mut editor = Editor::new(MIN_INPUT_WIDTH, 50., Vector2::ZERO, 10.); // arbitrary
         editor.font.borrow_mut().change_font_size(-6); // Set font size to 10
-        editor.set_event_sender(Some(es));
+        editor.camera.safe_zone_size = 0.;
         let offset = Vector2::new(0., (50. - editor.font.borrow().char_height) / 2. - 10.);
         editor.set_offset(offset);
+        editor.set_event_sender(Some(es));
         Self {
             editor,
             is_focus: false,
@@ -122,6 +124,7 @@ impl Input {
     pub fn focus(&mut self) {
         if self.width == 0. { self.set_width(MIN_INPUT_WIDTH); }
         self.is_focus = true;
+        self.editor.update_camera();
         self.editor.event_sender.as_ref().unwrap().send_event(
             EditorEvent::Focus(FocusElement::MenuInput(self.menu_id))
         ).unwrap()
@@ -139,6 +142,7 @@ impl Input {
         let animation_width = Animation::new(self.computed_width(), width, ANIMATION_DURATION, EasingFunction::SmootherStep, self.editor.event_sender.clone().unwrap());
         self.animation_width = Some(animation_width);
         self.width = width;
+        self.editor.camera.width = width;
     }
 
     pub fn set_placeholder(&mut self, text: &str) {
@@ -187,7 +191,7 @@ impl Input {
     pub fn update_text_layout(&mut self) {
         self.editor.update_text_layout();
         let width_left = self.width - self.editor.lines.first().unwrap().formatted_text_block.width();
-        const WIDTH_OFFSET: f32 = 25.;
+        const WIDTH_OFFSET: f32 = 0.;
         if width_left < WIDTH_OFFSET {
             self.set_width((self.width + WIDTH_OFFSET - width_left).clamp(MIN_INPUT_WIDTH, MAX_INPUT_WIDTH));
         } else if width_left >= WIDTH_OFFSET {
@@ -201,7 +205,14 @@ impl Input {
         draw_rounded_rectangle_with_border(x, y, self.computed_width(), self.height, 8., 0.5, Color::from_int_rgba(250, 250, 250, 255), graphics);
         // Draw text
         let line = self.editor.lines.first().unwrap();
+        graphics.set_clip(Some(
+            Rectangle::new(
+                Vector2::new(x as i32, y as i32),
+                Vector2::new((x + self.width) as i32, (y + self.height) as i32)
+            )
+        ));
         line.render(x - self.editor.camera.computed_x(), y - self.editor.camera.computed_y(), graphics);
+        graphics.set_clip(Option::None);
 
         let input_camera = Camera::from_with_offset(&self.editor.camera, Vector2::new(-x, -y));
         self.editor.cursor.render(&input_camera, graphics);

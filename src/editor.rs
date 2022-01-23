@@ -450,10 +450,10 @@ impl Editor {
         self.update_camera();
     }
 
-    fn update_camera(&mut self) {
+    pub(crate) fn update_camera(&mut self) {
         // Horizontal Scroll
-        if self.camera.get_cursor_real_x(&self.cursor) < self.camera.computed_x() + self.camera.safe_zone_size {
-            self.camera.move_x(self.camera.get_cursor_real_x(&self.cursor) - self.camera.computed_x() - self.camera.safe_zone_size)
+        if self.camera.get_cursor_x_with_offset(&self.cursor) < self.camera.computed_x() + self.camera.safe_zone_size {
+            self.camera.move_x(self.camera.get_cursor_x_with_offset(&self.cursor) - self.camera.computed_x() - self.camera.safe_zone_size)
         } else if self.padding + self.cursor.real_x() - self.camera.computed_x() > self.camera.width - self.camera.safe_zone_size {
             self.camera.move_x(self.padding + self.cursor.real_x() - self.camera.computed_x() - self.camera.width + self.camera.safe_zone_size)
         }

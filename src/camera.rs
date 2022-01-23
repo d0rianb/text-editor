@@ -93,7 +93,7 @@ impl Camera {
         Vector2::new(self.computed_x(), self.computed_y())
     }
 
-    pub fn get_cursor_real_x(&self, cursor: &Cursor) -> f32 {
+    pub fn get_cursor_x_with_offset(&self, cursor: &Cursor) -> f32 {
         cursor.real_x() + self.initial_x - cursor.font.borrow().char_width
     }
 
