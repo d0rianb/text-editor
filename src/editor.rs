@@ -169,15 +169,14 @@ impl Editable for Editor {
             self.selection.start(Vector2::new(self.cursor.x, self.cursor.y));
         }
 
-        if self.modifiers.alt() {
-            // Move to the next word
-            let (start, end) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
+        if self.modifiers.alt() {  // Move to the previous/next word
+            let (start, end) = self.lines[self.cursor.y as usize].get_next_jump(self.cursor.x, rel_x);
             if rel_x < 0 && start != self.cursor.x  {
                 new_x = start as i32;
             } else if rel_x > 0 && end != self.cursor.x  {
                 new_x = end as i32;
             }
-        } else if self.modifiers.logo() {
+        } else if self.modifiers.logo() { // Move to the start/end of the line/file
             if rel_x < 0  {
                 new_x = 0;
             } else if rel_x > 0 {
@@ -190,7 +189,7 @@ impl Editable for Editor {
             }
         }
 
-        if self.selection.is_valid() {
+        if self.selection.is_valid() && !self.modifiers.shift() { // go to the start/end of the selection
             if rel_x > 0 || rel_y < 0 {
                 self.move_cursor(self.selection.get_real_end().unwrap());
                 self.selection.reset();
@@ -202,13 +201,11 @@ impl Editable for Editor {
             }
         }
 
-        if new_x < 0 {
-            // Go to line before
+        if new_x < 0 {  // Go to line before
             if self.cursor.y == 0 { return; }
             let previous_line_buffer_size = self.lines[self.cursor.y as usize - 1].buffer.len() as u32;
             self.cursor.move_to(previous_line_buffer_size, self.cursor.y - 1);
-        } else if new_x as usize > self.get_current_buffer().len() {
-            // Go to line after
+        } else if new_x as usize > self.get_current_buffer().len() { // Go to line after
             if self.cursor.y as usize >= self.lines.len() - 1 {return; }
             self.cursor.move_to(0, self.cursor.y + 1);
         } else {

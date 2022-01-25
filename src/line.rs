@@ -5,6 +5,7 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::font::{FormattedTextBlock, TextAlignment};
 use speedy2d::Graphics2D;
+use crate::cursor::Cursor;
 
 use crate::font::Font;
 
@@ -75,6 +76,19 @@ impl Line {
         while end_index < chars.len() as u32 && chars[end_index as usize] != ' ' {
             end_index += 1;
         }
+        (start_index, end_index)
+    }
+
+    pub fn get_next_jump(&self, index: u32, dir: i32) -> (u32, u32) {
+        let mut start_index = index;
+        let mut end_index = index;
+        let char_jump_list = [' ', '_', '-'];
+        let chars: Vec<char> =  self.buffer.join("").chars().collect();
+        let max_indices = chars.len() as u32;
+        while start_index > 0 &&  char_jump_list.contains(&chars[start_index as usize - 1]) { start_index -= 1 }
+        while end_index < max_indices &&  char_jump_list.contains(&chars[end_index as usize]) { end_index += 1 }
+        while start_index > 0 && !char_jump_list.contains(&chars[start_index as usize - 1]) { start_index -= 1; }
+        while end_index < max_indices && !char_jump_list.contains(&chars[end_index as usize]) { end_index += 1; }
         (start_index, end_index)
     }
 
