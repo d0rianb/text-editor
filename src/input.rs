@@ -8,7 +8,8 @@ use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
 use speedy2d::window::{UserEventSender, VirtualKeyCode};
 
-use crate::{Animation, Editable, Editor, EditorEvent, FocusElement, MenuAction, MenuActionFn, MenuId};
+use crate::{Animation, Editable, Editor, EditorEvent, FocusElement, MenuId};
+use crate::menu_actions::{MenuAction, MenuActionFn};
 use crate::animation::EasingFunction;
 use crate::camera::Camera;
 use crate::render_helper::draw_rounded_rectangle_with_border;

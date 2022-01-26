@@ -3,9 +3,8 @@ use std::cell::RefCell;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
-use speedy2d::font::{FormattedTextBlock, TextAlignment};
+use speedy2d::font::{FormattedTextBlock, TextAlignment, TextOptions};
 use speedy2d::Graphics2D;
-use crate::cursor::Cursor;
 
 use crate::font::Font;
 
@@ -25,7 +24,7 @@ pub struct Line {
 
 impl Line {
     pub fn new(font: Rc<RefCell<Font>>) -> Self {
-        let formatted_text_block = font.borrow().layout_text("");
+        let formatted_text_block = font.borrow().layout_text("", TextOptions::default());
         Line {
             buffer: Vec::with_capacity(INITIAL_LINE_CAPACITY),
             previous_string: String::new(),
@@ -66,6 +65,8 @@ impl Line {
         self.buffer.join("")
     }
 
+    pub fn get_word_count(&self) -> u32 { self.buffer.join("").split(" ").filter(|w| *w != "").count() as u32 }
+
     pub fn get_word_at(&self, index: u32) -> (u32, u32) {
         let mut start_index = index;
         let mut end_index = index;
@@ -79,7 +80,7 @@ impl Line {
         (start_index, end_index)
     }
 
-    pub fn get_next_jump(&self, index: u32, dir: i32) -> (u32, u32) {
+    pub fn get_next_jump(&self, index: u32) -> (u32, u32) {
         let mut start_index = index;
         let mut end_index = index;
         let char_jump_list = [' ', '_', '-'];
@@ -107,7 +108,7 @@ impl Line {
             diff -= self.buffer.len() as i32;
         }
         if font_formatted_string != self.previous_string || font.style_changed{
-            self.formatted_text_block = font.layout_text(&font_formatted_string);
+            self.formatted_text_block = font.layout_text(&font_formatted_string, TextOptions::default());
             self.previous_string = font_formatted_string;
         }
         diff

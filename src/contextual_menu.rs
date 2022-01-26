@@ -4,13 +4,13 @@ use std::rc::Rc;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
-use speedy2d::font::FormattedTextBlock;
+use speedy2d::font::{FormattedTextBlock, TextAlignment, TextOptions};
 use speedy2d::Graphics2D;
 use speedy2d::window::{ModifiersState, UserEventSender, VirtualKeyCode};
 
-use crate::{Editable, EditorEvent, FocusElement, MenuAction, MenuId};
+use crate::{Editable, EditorEvent, FocusElement, MenuId};
+use crate::menu_actions::MenuAction;
 use crate::animation::{Animation, EasingFunction};
-use crate::FocusElement::{Editor, Menu};
 use crate::font::Font;
 use crate::input::{Input, Validator};
 use crate::render_helper::{draw_rounded_rectangle, draw_rounded_rectangle_with_border};
@@ -73,7 +73,7 @@ impl ContextualMenu {
             focus_index: -1,
             system_font: font,
             formatted_items: vec![],
-            previous_focus: Editor,
+            previous_focus: FocusElement::Editor,
             event_sender: Option::None,
             size_animation: Vector2::new(Option::None, Option::None),
             focus_y_animation: Option::None
@@ -124,6 +124,10 @@ impl ContextualMenu {
     }
 
     pub fn handle_key(&mut self, keycode: VirtualKeyCode, modifiers: ModifiersState) {
+        if self.get_focused_item().action == MenuAction::Information { // Handle informative toggle
+            if keycode == VirtualKeyCode::Escape || (modifiers.logo() && keycode == VirtualKeyCode::I) { self.close() }
+            else { return; }
+        }
         match keycode {
             VirtualKeyCode::Up => self.move_up(),
             VirtualKeyCode::Down => self.move_down(),
@@ -212,7 +216,7 @@ impl ContextualMenu {
 
     pub fn focus(&mut self) {
         self.focus_index = 0;
-        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(Menu(self.id))).unwrap();
+        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(FocusElement::Menu(self.id))).unwrap();
         self.set_focus(0);
     }
 
@@ -252,7 +256,7 @@ impl ContextualMenu {
                         break;
                     }
                 }
-                sub_menu.previous_focus = Menu(id);
+                sub_menu.previous_focus = FocusElement::Menu(id);
                 sub_menu.id = sub_menu_id;
                 sub_menu.define_id();
             }
@@ -292,7 +296,7 @@ impl ContextualMenu {
         self.focus();
     }
 
-    fn width(&self) -> f32 { self.formatted_items.iter().map(|ftb| ftb.width()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + 2. * 4. * ITEM_PADDING}
+    fn width(&self) -> f32 { self.formatted_items.iter().map(|ftb| ftb.width()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + 8. * ITEM_PADDING}
 
     fn height(&self) -> f32 { (self.formatted_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING) * self.items.len() as f32 + ITEM_PADDING}
 
@@ -307,7 +311,7 @@ impl ContextualMenu {
     pub fn update_content(&mut self) {
         self.formatted_items = self.items
             .iter()
-            .map(|item| self.system_font.borrow().layout_text(&item.title))
+            .map(|item| self.system_font.borrow().layout_text(&item.title, TextOptions::default().with_wrap_to_width(400., TextAlignment::Left)))
             .collect();
     }
 
@@ -326,7 +330,7 @@ impl ContextualMenu {
         draw_rounded_rectangle_with_border(menu_origin.x, menu_origin.y, width, height, 8., BORDER_WIDTH, Color::from_int_rgba(250, 250, 250, 250), graphics);
         for (i, item) in self.items.iter_mut().enumerate() {
             // draw highlight
-            if i == self.focus_index as usize {
+            if i == self.focus_index as usize && item.action != MenuAction::Information {
                 let computed_i = if let Some(animated_i) = &self.focus_y_animation { animated_i.value } else { i as f32 };
                 draw_rounded_rectangle(menu_origin.x, menu_origin.y + item_height * computed_i, width, item_height + ITEM_PADDING, 10., highlight_color, graphics);
                 if let Some(sub_menu) = &mut item.sub_menu {

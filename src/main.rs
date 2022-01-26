@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate derivative;
-use strum_macros::EnumString;
 
 mod editor;
 mod cursor;
@@ -13,9 +12,12 @@ mod contextual_menu;
 mod render_helper;
 mod input;
 mod editable;
+mod menu_actions;
 
-use std::{fmt, thread};
+use std::thread;
 use std::env;
+use std::ffi::OsStr;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use speedy2d::color::Color;
@@ -23,51 +25,17 @@ use speedy2d::dimen::Vector2;
 use speedy2d::window::{KeyScancode, ModifiersState, MouseButton, VirtualKeyCode, WindowCreationOptions, WindowHandler, WindowHelper, WindowPosition, WindowSize, WindowStartupInfo};
 use speedy2d::{Graphics2D, Window};
 
-use editor::Editor;
+use ifmt::iformat;
+
+use crate::editor::Editor;
 use crate::animation::Animation;
 use crate::editable::Editable;
 use crate::editor::{EDITOR_OFFSET_TOP, EDITOR_PADDING};
+use crate::menu_actions::MenuAction;
 
 const FPS: u64 = 60;
 const FRAME_DURATION: u64 = 1000 / FPS; // ms
 
-
-#[derive(PartialEq, Debug, Clone)]
-pub enum MenuAction {
-    Open(String),
-    OpenWithInput(String),
-    Save(String),
-    SaveWithInput(String),
-    Void,
-    Exit,
-    CancelChip,
-    Underline,
-    Bold,
-    OpenSubMenu,
-    CloseMenu,
-    PrintWithInput,
-    Print(String),
-    NewFile(String),
-    NewFileWithInput(String),
-}
-
-impl fmt::Display for MenuAction {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{:?}", self) }
-}
-
-impl MenuAction {
-    pub fn get_fn(action: &MenuAction) -> MenuActionFn {
-        match action {
-            MenuAction::OpenWithInput(_) => MenuAction::Open,
-            MenuAction::SaveWithInput(_) => MenuAction::Save,
-            MenuAction::PrintWithInput => MenuAction::Print,
-            MenuAction::NewFileWithInput(_) => MenuAction::NewFile,
-            _ => MenuAction::Print
-        }
-    }
-}
-
-type MenuActionFn = fn(String) -> MenuAction;
 type MenuId = [isize; 3]; // Support 3 nested menu
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -113,8 +81,8 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::Void => {},
                 MenuAction::Exit => helper.terminate_loop(),
                 MenuAction::CancelChip => self.editor.cancel_chip(),
-                MenuAction::Open(path) => self.editor.load_file(&path),
-                MenuAction::Save(path) => self.editor.save_to_file(&path),
+                MenuAction::Open(path) => { self.editor.load_file(&path); set_app_title(helper, &path) },
+                MenuAction::Save(path) => { self.editor.save_to_file(&path); set_app_title(helper, &path) },
                 MenuAction::NewFile(path) => self.editor.new_file(&path),
                 MenuAction::Underline => self.editor.underline(),
                 MenuAction::Bold => self.editor.bold(),
@@ -204,6 +172,11 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) {
         self.editor.modifiers = state.clone();
     }
+}
+
+fn set_app_title(helper: &mut WindowHelper<EditorEvent>, path: &str) {
+    let filename = Path::new(path).file_name().unwrap_or(OsStr::new("")).to_str().unwrap();
+    helper.set_title(&iformat!("Text Editor - {filename}"))
 }
 
 fn main() {

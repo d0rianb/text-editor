@@ -14,6 +14,7 @@ use clipboard::ClipboardProvider;
 use clipboard::ClipboardContext;
 use lazy_static::lazy_static;
 use regex::Regex;
+use ifmt::iformat;
 
 extern crate yaml_rust;
 use yaml_rust::{Yaml, YamlLoader};
@@ -21,7 +22,8 @@ use yaml_rust::{Yaml, YamlLoader};
 use crate::cursor::{Cursor, CURSOR_OFFSET_X};
 use crate::camera::Camera;
 use crate::contextual_menu::{ContextualMenu, MenuItem};
-use crate::{Animation, EditorEvent, MenuAction, MenuId};
+use crate::{Animation, EditorEvent, FocusElement, MenuId};
+use crate::menu_actions::MenuAction;
 use crate::font::Font;
 use crate::line::Line;
 use crate::range::Range;
@@ -170,7 +172,7 @@ impl Editable for Editor {
         }
 
         if self.modifiers.alt() {  // Move to the previous/next word
-            let (start, end) = self.lines[self.cursor.y as usize].get_next_jump(self.cursor.x, rel_x);
+            let (start, end) = self.lines[self.cursor.y as usize].get_next_jump(self.cursor.x);
             if rel_x < 0 && start != self.cursor.x  {
                 new_x = start as i32;
             } else if rel_x > 0 && end != self.cursor.x  {
@@ -230,6 +232,7 @@ impl Editable for Editor {
     fn shortcut(&mut self, c: char) {
         match c {
             's' => self.save(),
+            'S' => self.toggle_save_popup(),
             'o' => self.load(),
             'u' => self.underline(),
             'c' => self.copy(),
@@ -245,6 +248,8 @@ impl Editable for Editor {
             '-' => self.decrease_font_size(),
             // 'n' => self.contextual_submenu_test(),
             'n' => self.new_file_popup(),
+            'N' => self.new_file("new-file.txt"),
+            'i' => self.toggle_stats_popup(),
             _ => {}
         }
     }
@@ -428,7 +433,7 @@ impl Editor {
         self.lines.insert(index, new_line);
         // Pattern matching for new line
         if index == 1 {
-            self.cursor.move_to(0, self.cursor.y + 1);
+            self.move_cursor(Vector2::new(0, self.cursor.y + 1));
             return;
         }
         let line_before_buffer= self.lines.get(index - 1).unwrap().buffer.clone();
@@ -440,10 +445,10 @@ impl Editor {
         if text.trim_start().starts_with('-') &&  text.trim().len() > 1 {
             let new_text = " ".repeat(nb_whitespace) + "- ";
             last_line.add_text(&new_text);
-            self.cursor.move_to(nb_whitespace as u32 + 2, self.cursor.y + 1);
+            self.move_cursor(Vector2::new(nb_whitespace as u32 + 2, self.cursor.y + 1));
             self.menu.open_with(vec![MenuItem::new("Annuler", MenuAction::CancelChip) ]);
         } else {
-            self.cursor.move_to(0, self.cursor.y + 1);
+            self.move_cursor(Vector2::new(0, self.cursor.y + 1));
         }
     }
 
@@ -555,6 +560,23 @@ impl Editor {
         self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw).unwrap();
     }
 
+    fn get_stats(&self) -> Vec<String> {
+        let words_count = self.lines.iter().fold(0, |acc, line| acc + line.get_word_count());
+        let char_count = self.lines.iter().fold(0, |acc, line| acc + line.buffer.len());
+        vec![
+            iformat!("Nombre de mots: {words_count}").into(),
+            iformat!("Nombre de caractères: {char_count}").into(),
+            iformat!("Nombre de lignes: {self.lines.len()}").into(),
+            iformat!("Position du curseur: ({self.cursor.x}, {self.cursor.y})").into(),
+        ]
+    }
+
+    fn toggle_stats_popup(&mut self) {
+        if self.menu.is_visible { return self.menu.close(); }
+        self.menu.open_with(self.get_stats().iter().map(|s| MenuItem::new(s, MenuAction::Information)).collect());
+        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(FocusElement::Editor)).unwrap();
+    }
+
     fn get_prefs_key(&self, key: &str) -> Yaml {
         lazy_static! {
             static ref PREFS_PATH: &'static Path = Path::new("./resources/prefs.yaml");
@@ -617,17 +639,21 @@ impl Editor {
         if let Some(f) = self.filepath.clone() {
             self.save_to_file(&f);
         } else {
-            let mut path_items = vec![];
-            for (name, path) in self.get_recent_paths() {
-                path_items.push(MenuItem::new(&name, MenuAction::SaveWithInput(path)));
-            }
-            let path_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
-            let mut file_items = vec![MenuItem::new_with_submenu("Save to >".into(), path_submenu)];
-            for (name, path) in self.get_recent_files() {
-                file_items.push(MenuItem::new(&name, MenuAction::Save(path)));
-            }
-            self.menu.open_with(file_items);
+            self.toggle_save_popup()
         }
+    }
+
+    fn toggle_save_popup(&mut self) {
+        let mut path_items = vec![];
+        for (name, path) in self.get_recent_paths() {
+            path_items.push(MenuItem::new(&name, MenuAction::SaveWithInput(path)));
+        }
+        let path_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
+        let mut file_items = vec![MenuItem::new_with_submenu("Save to >".into(), path_submenu)];
+        for (name, path) in self.get_recent_files() {
+            file_items.push(MenuItem::new(&name, MenuAction::Save(path)));
+        }
+        self.menu.open_with(file_items);
     }
 
     /// Save to a specific file
@@ -676,7 +702,7 @@ impl Editor {
             self.lines[i].add_text(line);
         }
         let mut i : usize = self.lines.len() - 1;
-        while i >= 0 && self.lines[i].is_empty() { // Remove the empty lines at the end of the file
+        while i > 0 && self.lines[i].is_empty() { // Remove the empty lines at the end of the file
             self.lines.pop();
             i -= 1;
         }
@@ -695,6 +721,12 @@ impl Editor {
         animations
     }
 
+    fn update_stats(&mut self) {
+        if self.menu.is_visible && self.menu.get_focused_item().action == MenuAction::Information {
+            self.menu.set_items(self.get_stats().iter().map(|s| MenuItem::new(s, MenuAction::Information)).collect());
+        }
+    }
+
     pub fn update_text_layout(&mut self) {
         let mut difference = 0;
         for (i, line) in (&mut self.lines).iter_mut().enumerate() {
@@ -703,6 +735,7 @@ impl Editor {
         }
         self.font.borrow_mut().style_changed = false;
         self.cursor.move_to((self.cursor.x as i32 - difference) as u32, self.cursor.y);
+        self.update_stats();
     }
 
     pub fn update(&mut self, dt: f32) {

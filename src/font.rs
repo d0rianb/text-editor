@@ -53,8 +53,7 @@ impl Font {
             .replace(">=" ,"\u{2265}")
     }
 
-    pub fn layout_text(&self, text: &str) -> Rc<FormattedTextBlock> {
-        let text_layout_options = TextOptions::default();
+    pub fn layout_text(&self, text: &str, text_layout_options: TextOptions) -> Rc<FormattedTextBlock> {
         let escaped_text = self.format(text)
             .replace('\t', "  ")// Just for rendering
             .replace(" " ,"\u{a0}");  // Just for rendering
