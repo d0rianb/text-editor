@@ -35,10 +35,11 @@ pub struct Input {
     height: f32,
     validator: Validator,
     animation_width: Option<Animation>,
+    intermediate_result: bool,
 }
 
 impl Editable for Input {
-    fn add_char(&mut self, c: String) { self.editor.add_char(c) }
+    fn add_char(&mut self, c: String) { self.editor.add_char(c); self.on_insert() }
 
     fn delete_char(&mut self) { self.editor.delete_char() }
 
@@ -75,6 +76,7 @@ impl Editable for Input {
             'L' => { self.select_current_line(); self.delete_selection() },
             'd' => self.select_current_word(),
             'D' => { self.select_current_word(); self.delete_selection() },
+            'g' => self.on_insert(),
             _ => {}
         }
     }
@@ -118,9 +120,12 @@ impl Input {
             width: 0.,
             height: 50.,
             validator: Validator::None,
-            animation_width: Option::None
+            animation_width: Option::None,
+            intermediate_result: false,
         }
     }
+
+    pub fn set_intermediate_result(&mut self) { self.intermediate_result = true; }
 
     pub fn focus(&mut self) {
         if self.width == 0. { self.set_width(MIN_INPUT_WIDTH); }
@@ -166,6 +171,14 @@ impl Input {
             Validator::None => true,
             _ => false,
         }
+    }
+
+    fn on_insert(&mut self) {
+        if !self.intermediate_result { return; }
+        let result = self.editor.lines.first().unwrap().get_text();
+        self.editor.event_sender.as_ref().unwrap().send_event(
+            EditorEvent::MenuItemSelected((self.action_fn)(result))
+        ).unwrap();
     }
 
     fn submit(&mut self) {

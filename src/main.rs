@@ -88,7 +88,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::Bold => self.editor.bold(),
                 MenuAction::OpenSubMenu => {},
                 MenuAction::CloseMenu => self.editor.menu.close(),
-                MenuAction::Print(text) => println!("{}", text),
+                MenuAction::FindAndJump(text) => self.editor.find(&text),
                 _ => {}
             },
             EditorEvent::LoadFile(path) => set_app_title(helper, &path),

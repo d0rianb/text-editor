@@ -250,6 +250,7 @@ impl Editable for Editor {
             'n' => self.new_file_popup(),
             'N' => self.new_file("new-file.txt"),
             'i' => self.toggle_stats_popup(),
+            'r' => self.find_next(),
             _ => {}
         }
     }
@@ -562,6 +563,24 @@ impl Editor {
         self.update_text_layout();
         self.update_camera();
         self.send_event(EditorEvent::Redraw);
+    }
+
+    fn find_next(&mut self) {
+        self.menu.open_with(vec![MenuItem::new("Find:", MenuAction::FindAndJumpWithInput)])
+    }
+
+    pub fn find(&mut self, text: &str) {
+        let cursor_y = self.cursor.y as usize;
+        for i in 0 .. self.lines.len() {
+            let line_index = (i + cursor_y) % self.lines.len(); // begin the search at cursor.y then loop
+            let start = if line_index as u32 == self.cursor.y { self.cursor.x as usize } else { 0 };
+            let match_index = &self.lines[line_index].get_text()[start..].find(text); //.map(|i| i);
+            if let Some(index) = match_index {
+                self.selection.reset();
+                self.move_cursor(Vector2::new((start + index) as u32, line_index as u32));
+                break;
+            }
+        }
     }
 
     fn get_stats(&self) -> Vec<String> {

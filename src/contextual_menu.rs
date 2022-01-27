@@ -277,6 +277,7 @@ impl ContextualMenu {
                 if item.input.is_none() {
                     let action = MenuAction::get_fn(&item.action);
                     item.input = Some(Input::new(id, action, es.clone()));
+                    if item.action == MenuAction::FindAndJumpWithInput { item.input.as_mut().unwrap().set_intermediate_result() }
                 } else {
                     item.input.as_mut().unwrap().menu_id = id;
                 }
