@@ -9,5 +9,5 @@
  - find/replace
  - preferences
  - rework font
- - submenu/inputs
+ - write tests
  - relative path in build

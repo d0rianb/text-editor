@@ -193,7 +193,7 @@ impl Input {
     pub fn update_text_layout(&mut self) {
         self.editor.update_text_layout();
         let width_left = self.width - self.editor.lines.first().unwrap().formatted_text_block.width();
-        const WIDTH_OFFSET: f32 = 0.;
+        const WIDTH_OFFSET: f32 = 2.;
         if width_left < WIDTH_OFFSET {
             self.set_width((self.width + WIDTH_OFFSET - width_left).clamp(MIN_INPUT_WIDTH, MAX_INPUT_WIDTH));
         } else if width_left >= WIDTH_OFFSET {

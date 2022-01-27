@@ -6,6 +6,7 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::font::{FormattedTextBlock, TextAlignment, TextOptions};
 use speedy2d::Graphics2D;
+use speedy2d::shape::Rectangle;
 use speedy2d::window::{ModifiersState, UserEventSender, VirtualKeyCode};
 
 use crate::{Editable, EditorEvent, FocusElement, MenuId};
@@ -339,12 +340,18 @@ impl ContextualMenu {
                     input.render(menu_origin.x + width, menu_origin.y + item_height * computed_i, graphics);
                 }
             } else if let Some(sub_menu) = &mut item.sub_menu { sub_menu.close_submenu() }
+            graphics.set_clip(Some(
+                Rectangle::new(
+                    Vector2::new(menu_origin.x as i32, menu_origin.y as i32),
+                    Vector2::new((menu_origin.x + width) as i32, (menu_origin.y + height) as i32)
+                )
+            ));
             graphics.draw_text(
                 menu_origin + Vector2::new(2. * ITEM_PADDING, item_height * (i as f32) + ITEM_PADDING),
                 Color::BLACK,
                 &self.formatted_items[i]
             );
-
+            graphics.set_clip(Option::None);
         }
     }
 }
