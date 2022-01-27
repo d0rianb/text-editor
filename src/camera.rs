@@ -1,3 +1,6 @@
+use std::fmt::{Debug, Formatter};
+use ifmt::iwrite;
+
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
@@ -20,6 +23,14 @@ pub struct Camera {
     pub event_sender: Option<UserEventSender<EditorEvent>>,
 }
 
+impl Debug for Camera {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        iwrite!(f, "Camera : x: {self.computed_x()} | y: {self.computed_y()} \
+         | initial_x: {self.initial_x} | initial_y: {self.initial_y} \
+         | width: {self.width} | height: {self.height}")
+    }
+}
+
 
 impl Camera {
     pub fn new(width: f32, height: f32, offset: Vector2<f32>, padding: f32) -> Self {
@@ -36,7 +47,7 @@ impl Camera {
         }
     }
 
-    pub fn from_real_origin(width: f32, height: f32) -> Self {
+    pub fn _from_real_origin(width: f32, height: f32) -> Self {
         Self {
             x: 0.,
             y: 0.,
@@ -64,6 +75,11 @@ impl Camera {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.x =  0.;
+        self.y = 0.;
+    }
+
     pub fn move_x(&mut self, dx: f32) {
         let new_x = (self.x + dx).clamp(0., self.width);
         self.transition(new_x + self.initial_x, self.y + self.initial_y);
@@ -74,11 +90,6 @@ impl Camera {
         let new_y = (self.y + dy).clamp(0., self.height);
         self.transition(self.x + self.initial_x, new_y + self.initial_y);
         self.y = new_y;
-    }
-
-    pub fn _reset(&mut self) {
-        self.x = 0.;
-        self.y = 0.;
     }
 
     pub fn computed_x(&self) -> f32 {

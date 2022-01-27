@@ -1,5 +1,6 @@
 .idea/
 /target
 CV_Dorian.docx
-output.txt
 flamegraph.svg
+output.txt
+new_file.txt

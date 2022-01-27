@@ -177,7 +177,7 @@ impl ContextualMenu {
             match &item.action {
                 MenuAction::SaveWithInput(path)
                 | MenuAction::NewFileWithInput(path)
-                | MenuAction::OpenWithInput(path)=> { input.set_placeholder(path); input.set_validator(Validator::File) },
+                | MenuAction::OpenWithInput(path) => { input.set_placeholder(path); input.set_validator(Validator::File) },
                 _ => {}
             }
             input.focus();

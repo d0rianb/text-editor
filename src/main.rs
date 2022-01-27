@@ -43,7 +43,7 @@ pub enum FocusElement { Editor, Menu(MenuId), MenuInput(MenuId) }
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum EditorEvent {
-    Update, Redraw, Focus(FocusElement), MenuItemSelected(MenuAction)
+    Update, Redraw, Focus(FocusElement), MenuItemSelected(MenuAction), LoadFile(String)
 }
 
 struct EditorWindowHandler {
@@ -81,8 +81,8 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::Void => {},
                 MenuAction::Exit => helper.terminate_loop(),
                 MenuAction::CancelChip => self.editor.cancel_chip(),
-                MenuAction::Open(path) => { self.editor.load_file(&path); set_app_title(helper, &path) },
-                MenuAction::Save(path) => { self.editor.save_to_file(&path); set_app_title(helper, &path) },
+                MenuAction::Open(path) => self.editor.load_file(&path),
+                MenuAction::Save(path) => self.editor.save_to_file(&path),
                 MenuAction::NewFile(path) => self.editor.new_file(&path),
                 MenuAction::Underline => self.editor.underline(),
                 MenuAction::Bold => self.editor.bold(),
@@ -90,7 +90,8 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::CloseMenu => self.editor.menu.close(),
                 MenuAction::Print(text) => println!("{}", text),
                 _ => {}
-            }
+            },
+            EditorEvent::LoadFile(path) => set_app_title(helper, &path),
         }
     }
 

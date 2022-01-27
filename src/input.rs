@@ -29,7 +29,7 @@ pub enum Validator {
 pub struct Input {
     pub editor: Editor,
     is_focus: bool,
-    pub(crate) menu_id: MenuId,
+    pub menu_id: MenuId,
     action_fn: MenuActionFn,
     width: f32,
     height: f32,
@@ -106,10 +106,10 @@ impl Input {
     pub fn new(menu_id: MenuId, action_fn: MenuActionFn, es: UserEventSender<EditorEvent>) -> Self {
         let mut editor = Editor::new(MIN_INPUT_WIDTH, 50., Vector2::ZERO, 10.); // arbitrary
         editor.font.borrow_mut().change_font_size(-6); // Set font size to 10
-        editor.camera.safe_zone_size = 0.;
         let offset = Vector2::new(0., (50. - editor.font.borrow().char_height) / 2. - 10.);
         editor.set_offset(offset);
         editor.set_event_sender(Some(es));
+        editor.camera.safe_zone_size = 0.;
         Self {
             editor,
             is_focus: false,
@@ -147,11 +147,12 @@ impl Input {
     }
 
     pub fn set_placeholder(&mut self, text: &str) {
-        self.select_all();
-        self.delete_selection();
-        self.editor.lines.get_mut(0).unwrap().add_text(text);
+        let line = self.editor.lines.get_mut(0).unwrap();
+        line.empty();
+        line.add_text(text);
         self.move_cursor(Vector2::new(text.len() as u32, 0));
         self.update_text_layout();
+        self.editor.camera.reset();
     }
 
     pub fn set_validator(&mut self, validator: Validator) {

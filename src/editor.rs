@@ -1,7 +1,7 @@
-use std::{cmp, env, fs};
+use std::{cmp, fs};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -275,7 +275,7 @@ impl Editable for Editor {
             for (i, indices) in lines_indices.iter().enumerate() {
                 let start = cmp::min(indices.0, indices.1) as usize;
                 let end = cmp::max(indices.0, indices.1) as usize;
-                &self.lines[initial_i + i].buffer.drain(start .. end);
+                let _ = &self.lines[initial_i + i].buffer.drain(start .. end);
             }
             for i in 0 .. lines_indices.len() {
                 let index = initial_i + lines_indices.len() - i - 1;
@@ -375,6 +375,10 @@ impl Editor {
         self.menu.event_sender = es.clone();
     }
 
+    fn send_event(&self, event: EditorEvent) {
+        self.event_sender.as_ref().clone().unwrap().send_event(event).unwrap();
+    }
+
     pub fn set_offset(&mut self, offset: Vector2<f32>) {
         self.offset = offset.clone();
         let width = self.system_font.borrow().editor_size.x; // Hack to get the original width back
@@ -401,9 +405,9 @@ impl Editor {
     pub fn update_camera(&mut self) {
         // Horizontal Scroll
         if self.camera.get_cursor_x_with_offset(&self.cursor) < self.camera.computed_x() + self.camera.safe_zone_size {
-            self.camera.move_x(self.camera.get_cursor_x_with_offset(&self.cursor) - self.camera.computed_x() - self.camera.safe_zone_size)
+            self.camera.move_x(self.camera.get_cursor_x_with_offset(&self.cursor) - self.camera.computed_x() - self.camera.safe_zone_size);
         } else if self.padding + self.cursor.real_x() - self.camera.computed_x() > self.camera.width - self.camera.safe_zone_size {
-            self.camera.move_x(self.padding + self.cursor.real_x() - self.camera.computed_x() - self.camera.width + self.camera.safe_zone_size)
+            self.camera.move_x(self.padding + self.cursor.real_x() - self.camera.computed_x() - self.camera.width + self.camera.safe_zone_size);
         }
         // Vertical Scroll
         if self.camera.get_cursor_y_with_offset(&self.cursor) < self.camera.computed_y() + self.camera.safe_zone_size {
@@ -550,14 +554,14 @@ impl Editor {
         self.font.borrow_mut().change_font_size(2);
         self.update_text_layout();
         self.update_camera();
-        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw).unwrap();
+        self.send_event(EditorEvent::Redraw);
     }
 
     fn decrease_font_size(&mut self) {
         self.font.borrow_mut().change_font_size(-2);
         self.update_text_layout();
         self.update_camera();
-        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Redraw).unwrap();
+        self.send_event(EditorEvent::Redraw);
     }
 
     fn get_stats(&self) -> Vec<String> {
@@ -574,7 +578,7 @@ impl Editor {
     fn toggle_stats_popup(&mut self) {
         if self.menu.is_visible { return self.menu.close(); }
         self.menu.open_with(self.get_stats().iter().map(|s| MenuItem::new(s, MenuAction::Information)).collect());
-        self.event_sender.as_ref().unwrap().send_event(EditorEvent::Focus(FocusElement::Editor)).unwrap();
+        self.send_event(EditorEvent::Focus(FocusElement::Editor));
     }
 
     fn get_prefs_key(&self, key: &str) -> Yaml {
@@ -669,6 +673,7 @@ impl Editor {
             if i + 1 != self.lines.len() { data.push('\n') }
         }
         fs::write(valid_filepath, &data).expect(&format!("Unable to write file to {}", filepath));
+        self.send_event(EditorEvent::LoadFile(filepath.into()))
     }
 
     /// Ask for the filepath to load
@@ -708,6 +713,7 @@ impl Editor {
         }
         self.cursor.move_to(0, 0);
         self.update_text_layout();
+        self.send_event(EditorEvent::LoadFile(filepath.into()))
     }
 
     pub fn get_animations(&mut self) -> Vec<&mut Option<Animation>> {
