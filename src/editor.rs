@@ -1,7 +1,9 @@
-use std::{cmp, fs};
+use std::{cmp, env, fs};
 use std::cell::RefCell;
+use std::env::current_exe;
+use std::ops::Deref;
 use std::rc::Rc;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -243,7 +245,7 @@ impl Editable for Editor {
             'L' => { self.select_current_line(); self.delete_selection() },
             'w' | 'q' => std::process::exit(0),
             'd' => self.select_current_word(),
-            'D' => { self.select_current_word(); self.delete_selection() },
+            'D' => {} // TODO: duplicate line,
             '+' | '=' => self.increase_font_size(),
             '-' => self.decrease_font_size(),
             // 'n' => self.contextual_submenu_test(),
@@ -251,6 +253,7 @@ impl Editable for Editor {
             'N' => self.new_file("new-file.txt"),
             'i' => self.toggle_stats_popup(),
             'r' => self.find_next(),
+            'p' => self.print_dir(),
             _ => {}
         }
     }
@@ -467,6 +470,9 @@ impl Editor {
         let mut items = vec![];
         if self.selection.is_valid() {
             for i in [
+                MenuItem::new("Copy", MenuAction::Copy),
+                MenuItem::new("Cut", MenuAction::Cut),
+                MenuItem::new("Paste", MenuAction::Paste),
                 MenuItem::new("Bold", MenuAction::Bold),
                 MenuItem::new("Underline", MenuAction::Underline),
             ] { items.push(i) }
@@ -601,17 +607,16 @@ impl Editor {
     }
 
     fn get_prefs_key(&self, key: &str) -> Yaml {
-        lazy_static! {
-            static ref PREFS_PATH: &'static Path = Path::new("./resources/prefs.yaml");
-            static ref PREFS_STR: String = fs::read_to_string(PREFS_PATH.clone()).expect("Can't find the preference file");
-            static ref DOCS: Vec<Yaml> = YamlLoader::load_from_str(&PREFS_STR).expect("Invalid preferences");
-            static ref PREFS: &'static Yaml = DOCS.get(0).unwrap();
-        }
-        // let PREFS_PATH = env::current_exe().unwrap().parent().unwrap().join(Path::new("resources/prefs.yaml")).into_boxed_path();
-        // dbg!(&PREFS_PATH);
-        // let PREFS_STR: String = fs::read_to_string(PREFS_PATH.clone()).expect("Can't find the preference file");
-        // let DOCS: Vec<Yaml> = YamlLoader::load_from_str(&PREFS_STR).expect("Invalid preferences");
-        // let PREFS = DOCS.get(0).unwrap();
+        // lazy_static! {
+        //     static ref PREFS_PATH: &'static Path = Path::new("./resources/prefs.yaml");
+        //     static ref PREFS_STR: String = fs::read_to_string(PREFS_PATH.clone()).expect("Can't find the preference file");
+        //     static ref DOCS: Vec<Yaml> = YamlLoader::load_from_str(&PREFS_STR).expect("Invalid preferences");
+        //     static ref PREFS: &'static Yaml = DOCS.get(0).unwrap();
+        // }
+       let PREFS_PATH = self.get_file_path("./resources/prefs.yaml");
+       let PREFS_STR: String = fs::read_to_string(PREFS_PATH.clone()).expect("Can't find the preference file");
+       let DOCS: Vec<Yaml> = YamlLoader::load_from_str(&PREFS_STR).expect("Invalid preferences");
+       let PREFS = DOCS.get(0).unwrap();
         PREFS[key].clone()
     }
 
@@ -655,6 +660,35 @@ impl Editor {
         self.delete_selection();
         self.save_to_file(path);
         self.load_file(path);
+    }
+
+    #[cfg(debug_assertions)]
+    fn get_working_dir(&self) -> PathBuf { env::current_dir().unwrap() }
+
+    #[cfg(not(debug_assertions))]
+    fn get_working_dir(&self) -> PathBuf {
+        let path_buf = env::current_exe().unwrap();
+        path_buf.parent().unwrap().to_path_buf()
+    }
+
+    pub fn get_file_path(&self, filename: &str) -> String {
+        let mut wd = self.get_working_dir();
+        wd.push(filename);
+        let valid_file_path = wd.canonicalize().expect(&format!("Invalid path : {:?}", wd));
+        valid_file_path.into_os_string().to_str().unwrap().to_string()
+    }
+
+    fn print_dir(&mut self) {
+        let current_exe = env::current_exe();
+        let text =  current_exe
+            .as_ref()
+            .unwrap()
+            .to_str()
+            .unwrap();
+        self.lines
+            .get_mut(0)
+            .unwrap()
+            .add_text(text);
     }
 
     /// Ask for the filepath if there is no one specified else save to the current one

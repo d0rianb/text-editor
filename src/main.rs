@@ -86,6 +86,9 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::NewFile(path) => self.editor.new_file(&path),
                 MenuAction::Underline => self.editor.underline(),
                 MenuAction::Bold => self.editor.bold(),
+                MenuAction::Copy => self.editor.copy(),
+                MenuAction::Cut => { self.editor.copy(); self.editor.delete_selection(); },
+                MenuAction::Paste => self.editor.paste(),
                 MenuAction::OpenSubMenu => {},
                 MenuAction::CloseMenu => self.editor.menu.close(),
                 MenuAction::FindAndJump(text) => self.editor.find(&text),
@@ -111,8 +114,11 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     fn on_mouse_move(&mut self, helper: &mut WindowHelper<EditorEvent>, position: Vector2<f32>) {
         self.mouse_position = position.clone();
         if self.mouse_button_pressed.0 || self.editor.modifiers.shift() {
+            self.editor.camera.safe_zone_size = 5.;
             self.editor.update_selection(position);
             helper.request_redraw();
+        } else {
+            self.editor.camera.safe_zone_size = 30.;
         }
     }
 
@@ -125,8 +131,11 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 self.editor.move_cursor(Vector2::new(index_position.x, index_position.y));
                 self.editor.begin_selection();
             },
-            MouseButton::Right => self.mouse_button_pressed.1 = true,
-            _ => ()
+            MouseButton::Right => {
+                self.mouse_button_pressed.1 = true;
+                self.editor.toggle_contextual_menu();
+            },
+            _ => {}
         }
         helper.request_redraw();
     }

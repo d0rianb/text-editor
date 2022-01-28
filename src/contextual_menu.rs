@@ -313,7 +313,7 @@ impl ContextualMenu {
     pub fn update_content(&mut self) {
         self.formatted_items = self.items
             .iter()
-            .map(|item| self.system_font.borrow().layout_text(&item.title, TextOptions::default().with_wrap_to_width(400., TextAlignment::Left)))
+            .map(|item| self.system_font.borrow().layout_text(&item.title, TextOptions::default())) // TDOD: wrap on max size
             .collect();
     }
 
