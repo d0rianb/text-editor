@@ -27,6 +27,7 @@ use crate::menu_actions::MenuAction;
 use crate::font::Font;
 use crate::line::Line;
 use crate::range::Range;
+use crate::selection::Selection;
 use crate::editable::Editable;
 
 pub const EDITOR_PADDING: f32 = 10.;
@@ -43,7 +44,7 @@ pub struct Editor {
     pub modifiers : ModifiersState,
     pub filepath: Option<String>,
     pub event_sender: Option<UserEventSender<EditorEvent>>,
-    pub selection: Range,
+    pub selection: Selection,
     pub underline_buffer: Vec<Range>,
     pub bold_buffer: Vec<Range>,
     pub menu: ContextualMenu,
@@ -62,19 +63,19 @@ impl Editor {
         Self {
             cursor: Cursor::new(0, 0, Rc::clone(&font)),
             camera: Camera::new(width, height, offset.clone(), padding),
-            offset,
-            padding,
             lines: vec![Line::new(Rc::clone(&font))],
-            font,
+            selection: Selection::new(Rc::clone(&font)),
             system_font: system_font.clone(),
             modifiers: ModifiersState::default(),
             filepath: Option::None,
             event_sender: Option::None,
-            selection: Range::default(),
             underline_buffer: vec![],
             bold_buffer: vec![],
             menu: ContextualMenu::new(system_font),
-            cached_prefs: Option::None
+            cached_prefs: Option::None,
+            offset,
+            padding,
+            font,
         }
     }
 }
@@ -91,10 +92,10 @@ impl Editable for Editor {
             if &c == template.0 { after = template.1; break }
         }
         if after == "" { self.delete_selection(); }
-        let pos = if self.selection.is_valid() { self.selection.get_real_start().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
+        let pos = if self.selection.is_valid() { self.selection.start().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
         self.get_current_buffer().insert(pos.x as usize, c);
         if after != "" {
-            let after_pos = if self.selection.is_valid() { self.selection.get_real_end().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
+            let after_pos = if self.selection.is_valid() { self.selection.end().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
             self.lines[after_pos.y as usize].buffer.insert(after_pos.x as usize + 1, after.into());
         }
         self.move_cursor_relative(1, 0);
@@ -168,8 +169,8 @@ impl Editable for Editor {
         let mut new_x = (self.cursor.x as i32 + rel_x) as i32;
         let mut new_y = (self.cursor.y as i32 + rel_y).clamp(0, max_y);
 
-        if self.modifiers.shift() && self.selection.start.is_none() {
-            self.selection.start(Vector2::new(self.cursor.x, self.cursor.y));
+        if self.modifiers.shift() && self.selection.start().is_none() {
+            self.selection.set_start(Vector2::new(self.cursor.x, self.cursor.y));
         }
 
         if self.modifiers.alt() {  // Move to the previous/next word
@@ -191,11 +192,11 @@ impl Editable for Editor {
 
         if self.selection.is_valid() && !self.modifiers.shift() && !(self.modifiers.logo() && self.modifiers.ctrl()) { // go to the start/end of the selection
             if rel_x > 0 || rel_y > 0 {
-                self.move_cursor(self.selection.get_real_end().unwrap());
+                self.move_cursor(self.selection.end().unwrap());
                 self.selection.reset();
                 return;
             } else if rel_x < 0 || rel_y < 0 {
-                self.move_cursor(self.selection.get_real_start().unwrap());
+                self.move_cursor(self.selection.start().unwrap());
                 self.selection.reset();
                 return;
             }
@@ -220,7 +221,7 @@ impl Editable for Editor {
         }
         // Update selection
         if self.modifiers.shift() {
-            self.selection.end(Vector2::new(self.cursor.x, self.cursor.y));
+            self.selection.set_end(Vector2::new(self.cursor.x, self.cursor.y));
         } else if (rel_x.abs() > 0 || rel_y.abs() > 0) && self.selection.is_valid() && !(self.modifiers.logo() && self.modifiers.ctrl()) {
             self.selection.reset();
         }
@@ -255,22 +256,22 @@ impl Editable for Editor {
     }
 
     fn begin_selection(&mut self) {
-        self.selection.start((self.cursor.x, self.cursor.y).into());
+        self.selection.set_start((self.cursor.x, self.cursor.y).into());
     }
 
     fn end_selection(&mut self) {
-        self.selection.end((self.cursor.x, self.cursor.y).into());
+        self.selection.set_end((self.cursor.x, self.cursor.y).into());
     }
 
     fn update_selection(&mut self, position: Vector2<f32>) {
         let mouse_position = self.get_mouse_position_index(position);
-        self.selection.end(mouse_position);
+        self.selection.set_end(mouse_position);
         self.move_cursor(mouse_position);
     }
 
     fn delete_selection(&mut self) {
         if self.selection.is_valid() {
-            let initial_i = cmp::min(self.selection.start.unwrap().y, self.selection.end.unwrap().y) as usize;
+            let initial_i = cmp::min(self.selection.start().unwrap().y, self.selection.end().unwrap().y) as usize;
             let lines_indices = self.selection.get_lines_index(&self.lines);
             for (i, indices) in lines_indices.iter().enumerate() {
                 let start = cmp::min(indices.0, indices.1) as usize;
@@ -283,7 +284,7 @@ impl Editable for Editor {
                     self.lines.remove(index);
                 }
             }
-            let selection_start = self.selection.get_real_start().unwrap();
+            let selection_start = self.selection.start().unwrap();
             self.move_cursor(Vector2::new(selection_start.x, selection_start.y));
             self.selection.reset();
         }
@@ -307,7 +308,7 @@ impl Editable for Editor {
 
     fn select_current_word(&mut self) {
         let (start, end) = self.lines[self.cursor.y as usize].get_word_at(self.cursor.x);
-        self.selection = Range::new(
+        self.selection.set(
             Vector2::new(start, self.cursor.y),
             Vector2::new(end, self.cursor.y),
         )
@@ -315,8 +316,7 @@ impl Editable for Editor {
 
     fn select_all(&mut self) {
         let last_line_length = self.lines.last().unwrap().buffer.len() as u32;
-        self.selection.start(Vector2::ZERO);
-        self.selection.end(Vector2::new(last_line_length, self.lines.len() as u32 - 1));
+        self.selection.set(Vector2::ZERO, Vector2::new(last_line_length, self.lines.len() as u32 - 1));
     }
 
     fn select_current_line(&mut self) {
@@ -334,7 +334,7 @@ impl Editable for Editor {
         let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
         let mut buffer = vec![];
         let lines_index = self.selection.get_lines_index(&self.lines);
-        let initial_y = self.selection.get_start_y();
+        let initial_y = self.selection.start().unwrap().y;
         for (i, (start, end)) in lines_index.iter().enumerate() {
             let y = initial_y as usize + i;
             let mut text = String::new();
@@ -371,6 +371,7 @@ impl Editor {
     pub fn set_event_sender(&mut self, es: Option<UserEventSender<EditorEvent>>) {
         self.event_sender = es.clone();
         self.cursor.event_sender = es.clone();
+        self.selection.event_sender = es.clone();
         self.camera.event_sender = es.clone();
         self.menu.event_sender = es.clone();
     }
@@ -458,8 +459,8 @@ impl Editor {
 
     fn duplicate_line(&mut self) {
         let cursor_pos = Vector2::new(self.cursor.x, self.cursor.y);
-        let index_start = self.selection.get_real_start().unwrap_or(cursor_pos).y as usize;
-        let index_end = self.selection.get_real_end().unwrap_or(cursor_pos).y as usize;
+        let index_start = self.selection.start().unwrap_or(cursor_pos).y as usize;
+        let index_end = self.selection.end().unwrap_or(cursor_pos).y as usize;
         let line_slice = self.lines[index_start..=index_end].to_vec();
         for (i, line) in line_slice.iter().enumerate() {
             self.lines.insert(index_start + i, (*line).clone());
@@ -469,16 +470,16 @@ impl Editor {
 
     fn switch_lines(&mut self, dir: i32) {
         let cursor_pos = Vector2::new(self.cursor.x, self.cursor.y);
-        let index_start = self.selection.get_real_start().unwrap_or(cursor_pos).y as usize;
-        let index_end = self.selection.get_real_end().unwrap_or(cursor_pos).y as usize;
+        let index_start = self.selection.start().unwrap_or(cursor_pos).y as usize;
+        let index_end = self.selection.end().unwrap_or(cursor_pos).y as usize;
         if dir < 0 {
             for i in index_start..=index_end { self.lines.swap(i, (i as i32 - 1).abs() as usize); }
         } else if dir > 0 {
             for i in 0..=(index_end - index_start) { self.lines.swap(index_end - i, index_end - i as usize + 1); }
         }
         if self.selection.is_valid() {
-            self.selection.start.as_mut().unwrap().y = (self.selection.start.as_mut().unwrap().y as i32 + dir) as u32;
-            self.selection.end.as_mut().unwrap().y = (self.selection.end.as_mut().unwrap().y as i32 + dir) as u32;
+            self.selection.set_start(Vector2::new(self.selection.start().unwrap().x, (self.selection.start().unwrap().y as i32 + dir) as u32));
+            self.selection.set_end(Vector2::new(self.selection.end().unwrap().x, (self.selection.end().unwrap().y as i32 + dir) as u32));
         }
         self.move_cursor(Vector2::new(self.cursor.x, (self.cursor.y as i32 + dir) as u32))
     }
@@ -559,17 +560,17 @@ impl Editor {
     }
 
     pub fn underline(&mut self) {
-        Self::add_range_to_buffer(self.selection.clone(),  &mut self.underline_buffer);
+        Self::add_range_to_buffer(self.selection.get_range(), &mut self.underline_buffer);
     }
 
     pub fn bold(&mut self) {
-        Self::add_range_to_buffer(self.selection.clone(),  &mut self.bold_buffer);
+        Self::add_range_to_buffer(self.selection.get_range(), &mut self.bold_buffer);
     }
 
     pub fn set_line_alignment(&mut self, alignment: TextAlignment) {
         if self.selection.is_valid() {
-            let start = self.selection.get_real_start().unwrap().y as usize;
-            let end = self.selection.get_real_end().unwrap().y as usize;
+            let start = self.selection.start().unwrap().y as usize;
+            let end = self.selection.end().unwrap().y as usize;
             for (i, line) in self.lines.iter_mut().enumerate() {
                 if start <= i && i <= end {
                     line.set_alignment(alignment.clone());
@@ -716,6 +717,7 @@ impl Editor {
     /// Ask for the filepath if there is no one specified else save to the current one
     pub fn save(&mut self) {
         if let Some(f) = self.filepath.clone() {
+            if &f == "new-file.txt" { return self.toggle_save_popup(); }
             self.save_to_file(&f);
         } else {
             self.toggle_save_popup()
@@ -795,6 +797,8 @@ impl Editor {
         let mut animations = vec![
             &mut self.cursor.animation.x, &mut self.cursor.animation.y,
             &mut self.camera.animation.x,  &mut self.camera.animation.y,
+            &mut self.selection.start_animation.x, &mut self.selection.start_animation.y,
+            &mut self.selection.end_animation.x, &mut self.selection.end_animation.y,
         ];
         for animation in self.menu.get_animations() {
             animations.push(animation)
@@ -837,6 +841,7 @@ impl Editor {
         let char_height = self.font.borrow().char_height;
 
         let mut previous_line_height = 0.;
+        self.selection.render(&self.lines, &self.camera, graphics);
         // Draw text
         for (i, line) in self.lines.iter().enumerate() {
             line.render(
@@ -862,7 +867,7 @@ impl Editor {
             let line_offset = line.alignment_offset;
             let line_camera = Camera::from_with_offset(&self.camera, Vector2::new(-line_offset, 0.));
             let lines_index = range.get_lines_index(&self.lines);
-            let initial_y = range.get_start_y();
+            let initial_y = range.get_real_start().unwrap().y;
             for (i, (start, end)) in lines_index.iter().enumerate() {
                 let y = (initial_y as usize + i) as f32 * char_height;
                 graphics.draw_line(
@@ -875,7 +880,6 @@ impl Editor {
         }
         // self.camera._render(graphics);
         self.cursor.render(&line_camera, graphics);
-        self.selection.render(Rc::clone(&self.font), &self.lines, &self.camera, graphics);
         let menu_position = self.cursor.position() - self.camera.position() + Vector2::new(CURSOR_OFFSET_X, self.font.borrow().char_height);
         self.menu.render(menu_position, graphics);
         graphics.draw_rectangle( // draw the title bar

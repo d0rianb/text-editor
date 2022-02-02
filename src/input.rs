@@ -231,6 +231,6 @@ impl Input {
 
         let input_camera = Camera::from_with_offset(&self.editor.camera, Vector2::new(-x, -y));
         self.editor.cursor.render(&input_camera, graphics);
-        self.editor.selection.render(Rc::clone(&self.editor.font), &self.editor.lines, &input_camera, graphics);
+        self.editor.selection.render(&self.editor.lines, &input_camera, graphics);
     }
 }

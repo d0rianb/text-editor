@@ -12,13 +12,12 @@ use crate::camera::Camera;
 use crate::font::Font;
 use crate::line::Line;
 
-fn get_line_length(i: u32, lines: &[Line]) -> u32 {
+pub fn get_line_length(i: u32, lines: &[Line]) -> u32 {
     if i + 1 > lines.len() as u32 { return 0; }
     lines[i as usize].buffer.len() as u32
 }
 
-#[derive(Derivative)]
-#[derivative(Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Range {
     pub start: Option<Vector2<u32>>,
     pub end: Option<Vector2<u32>>,
@@ -33,7 +32,7 @@ impl Default for Range {
     }
 }
 
-impl Debug for Range{
+impl Debug for Range {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let start_text = if let Some(start) = self.start { start.x.to_string() + "," + &start.y.to_string() } else { "None".to_owned() } ;
         let end_text = if let Some(end) = self.end { end.x.to_string() + "," + &end.y.to_string() } else { "None".to_owned() } ;
@@ -78,11 +77,6 @@ impl Range {
         self.end = Some(Vector2::new(position.x, position.y));
     }
 
-    pub fn get_start_y(&self) -> u32 {
-        if !self.is_valid() { return 0; }
-        cmp::min(self.start.unwrap().y, self.end.unwrap().y)
-    }
-
     pub fn reset(&mut self) {
         self.start = Option::None;
         self.end = Option::None;
@@ -95,8 +89,8 @@ impl Range {
             self.end(other.end.unwrap());
             return;
         }
-        let start = vector_min(self.start.unwrap(), other.start.unwrap());
-        let end = vector_max(self.end.unwrap(), other.end.unwrap());
+        let start= vector_min(self.start.unwrap(), other.start.unwrap());
+        let end= vector_max(self.end.unwrap(), other.end.unwrap());
         self.start(start);
         self.end(end);
     }
@@ -149,14 +143,14 @@ impl Range {
         result
     }
 
-    pub fn render(&mut self, font: Rc<RefCell<Font>>, lines: &[Line], camera: &Camera, graphics: &mut Graphics2D) {
+    pub fn _render(&mut self, font: Rc<RefCell<Font>>, lines: &[Line], camera: &Camera, graphics: &mut Graphics2D) {
         if !self.is_valid() { return; }
         let font_width = font.borrow().char_width;
         let font_height = font.borrow().char_height;
-        let initial_y = self.get_start_y() as f32 * font_height - camera.computed_y();
+        let initial_y = self.get_real_start().unwrap().y as f32 * font_height - camera.computed_y();
         for (i, indices) in self.get_lines_index(lines).iter().enumerate() { // TODO: cache ?
             let line_y = initial_y + i as f32 * font_height;
-            let line = &lines[self.get_start_y() as usize + i];
+            let line = &lines[self.get_real_start().unwrap().y as usize + i];
             let line_offset = line.alignment_offset;
             let line_camera = Camera::from_with_offset(camera, Vector2::new(-line_offset, 0.));
             graphics.draw_rectangle(
@@ -168,4 +162,5 @@ impl Range {
             )
         }
     }
+
 }
