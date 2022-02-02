@@ -150,6 +150,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
 
     fn on_key_down(&mut self, helper: &mut WindowHelper<EditorEvent>, virtual_key_code: Option<VirtualKeyCode>, _scancode: KeyScancode) {
         let modifiers = self.editor.modifiers.clone();
+        dbg!(&modifiers);
         if let Some(keycode) = virtual_key_code {
             match self.focus {
                 FocusElement::Menu(id) => self.editor.get_menu(id).handle_key(keycode, modifiers),

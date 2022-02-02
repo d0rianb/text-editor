@@ -1,7 +1,5 @@
 use std::{cmp, env, fs};
 use std::cell::RefCell;
-use std::env::current_exe;
-use std::ops::Deref;
 use std::rc::Rc;
 use std::path::{Path, PathBuf};
 
@@ -16,7 +14,7 @@ use clipboard::ClipboardProvider;
 use clipboard::ClipboardContext;
 use lazy_static::lazy_static;
 use regex::Regex;
-use ifmt::iformat;
+use ifmt::{iformat, iprintln};
 
 extern crate yaml_rust;
 use yaml_rust::{Yaml, YamlLoader};
@@ -30,7 +28,6 @@ use crate::font::Font;
 use crate::line::Line;
 use crate::range::Range;
 use crate::editable::Editable;
-
 
 pub const EDITOR_PADDING: f32 = 10.;
 pub const EDITOR_OFFSET_TOP: f32 = 55.;
@@ -50,6 +47,7 @@ pub struct Editor {
     pub underline_buffer: Vec<Range>,
     pub bold_buffer: Vec<Range>,
     pub menu: ContextualMenu,
+    pub cached_prefs: Option<Yaml>,
 }
 
 impl Editor {
@@ -76,6 +74,7 @@ impl Editor {
             underline_buffer: vec![],
             bold_buffer: vec![],
             menu: ContextualMenu::new(system_font),
+            cached_prefs: Option::None
         }
     }
 }
@@ -181,24 +180,21 @@ impl Editable for Editor {
                 new_x = end as i32;
             }
         } else if self.modifiers.logo() { // Move to the start/end of the line/file
-            if rel_x < 0  {
-                new_x = 0;
-            } else if rel_x > 0 {
-                new_x = self.lines[self.cursor.y as usize].buffer.len() as i32;
-            }
-            if rel_y < 0 {
-                new_y = 0;
-            } else if rel_y > 0 {
-                new_y = self.lines.len() as i32 - 1;
+            if self.modifiers.ctrl() {
+                self.switch_lines(rel_y)
+            } else {
+                if rel_x < 0  { new_x = 0; }
+                else if rel_x > 0 { new_x = self.lines[self.cursor.y as usize].buffer.len() as i32; }
+                if rel_y < 0 { new_y = 0; } else if rel_y > 0 { new_y = self.lines.len() as i32 - 1; }
             }
         }
 
-        if self.selection.is_valid() && !self.modifiers.shift() { // go to the start/end of the selection
-            if rel_x > 0 || rel_y < 0 {
+        if self.selection.is_valid() && !self.modifiers.shift() && !(self.modifiers.logo() && self.modifiers.ctrl()) { // go to the start/end of the selection
+            if rel_x > 0 || rel_y > 0 {
                 self.move_cursor(self.selection.get_real_end().unwrap());
                 self.selection.reset();
                 return;
-            } else if rel_x < 0 || rel_y > 0 {
+            } else if rel_x < 0 || rel_y < 0 {
                 self.move_cursor(self.selection.get_real_start().unwrap());
                 self.selection.reset();
                 return;
@@ -225,7 +221,7 @@ impl Editable for Editor {
         // Update selection
         if self.modifiers.shift() {
             self.selection.end(Vector2::new(self.cursor.x, self.cursor.y));
-        } else if (rel_x.abs() > 0 || rel_y.abs() > 0) && self.selection.is_valid() {
+        } else if (rel_x.abs() > 0 || rel_y.abs() > 0) && self.selection.is_valid() && !(self.modifiers.logo() && self.modifiers.ctrl()) {
             self.selection.reset();
         }
         self.update_camera();
@@ -245,7 +241,7 @@ impl Editable for Editor {
             'L' => { self.select_current_line(); self.delete_selection() },
             'w' | 'q' => std::process::exit(0),
             'd' => self.select_current_word(),
-            'D' => {} // TODO: duplicate line,
+            'D' => self.duplicate_line(),
             '+' | '=' => self.increase_font_size(),
             '-' => self.decrease_font_size(),
             // 'n' => self.contextual_submenu_test(),
@@ -460,6 +456,33 @@ impl Editor {
         }
     }
 
+    fn duplicate_line(&mut self) {
+        let cursor_pos = Vector2::new(self.cursor.x, self.cursor.y);
+        let index_start = self.selection.get_real_start().unwrap_or(cursor_pos).y as usize;
+        let index_end = self.selection.get_real_end().unwrap_or(cursor_pos).y as usize;
+        let line_slice = self.lines[index_start..=index_end].to_vec();
+        for (i, line) in line_slice.iter().enumerate() {
+            self.lines.insert(index_start + i, (*line).clone());
+        }
+        self.move_cursor(Vector2::new(self.cursor.x, self.cursor.y + line_slice.len() as u32))
+    }
+
+    fn switch_lines(&mut self, dir: i32) {
+        let cursor_pos = Vector2::new(self.cursor.x, self.cursor.y);
+        let index_start = self.selection.get_real_start().unwrap_or(cursor_pos).y as usize;
+        let index_end = self.selection.get_real_end().unwrap_or(cursor_pos).y as usize;
+        if dir < 0 {
+            for i in index_start..=index_end { self.lines.swap(i, (i as i32 - 1).abs() as usize); }
+        } else if dir > 0 {
+            for i in 0..=(index_end - index_start) { self.lines.swap(index_end - i, index_end - i as usize + 1); }
+        }
+        if self.selection.is_valid() {
+            self.selection.start.as_mut().unwrap().y = (self.selection.start.as_mut().unwrap().y as i32 + dir) as u32;
+            self.selection.end.as_mut().unwrap().y = (self.selection.end.as_mut().unwrap().y as i32 + dir) as u32;
+        }
+        self.move_cursor(Vector2::new(self.cursor.x, (self.cursor.y as i32 + dir) as u32))
+    }
+
     pub fn cancel_chip(&mut self) {
         self.get_current_line().empty();
         self.update_text_layout();
@@ -606,21 +629,20 @@ impl Editor {
         self.send_event(EditorEvent::Focus(FocusElement::Editor));
     }
 
-    fn get_prefs_key(&self, key: &str) -> Yaml {
-        // lazy_static! {
-        //     static ref PREFS_PATH: &'static Path = Path::new("./resources/prefs.yaml");
-        //     static ref PREFS_STR: String = fs::read_to_string(PREFS_PATH.clone()).expect("Can't find the preference file");
-        //     static ref DOCS: Vec<Yaml> = YamlLoader::load_from_str(&PREFS_STR).expect("Invalid preferences");
-        //     static ref PREFS: &'static Yaml = DOCS.get(0).unwrap();
-        // }
-       let PREFS_PATH = self.get_file_path("./resources/prefs.yaml");
-       let PREFS_STR: String = fs::read_to_string(PREFS_PATH.clone()).expect("Can't find the preference file");
-       let DOCS: Vec<Yaml> = YamlLoader::load_from_str(&PREFS_STR).expect("Invalid preferences");
-       let PREFS = DOCS.get(0).unwrap();
-        PREFS[key].clone()
+    fn get_prefs_key(&mut self, key: &str) -> Yaml {
+        if let Some(prefs) = &self.cached_prefs {
+            prefs[key].clone()
+        } else {
+            let prefs_path = self.get_file_path("./resources/prefs.yaml");
+            let prefs_str = fs::read_to_string(prefs_path.clone()).expect("Can't find the preference file");
+            let docs: Vec<Yaml> = YamlLoader::load_from_str(&prefs_str).expect("Invalid preferences");
+            let prefs = docs.get(0).unwrap();
+            self.cached_prefs = Some(prefs.clone());
+            prefs[key].clone()
+        }
     }
 
-    fn get_recent_files(&self) -> Vec<(String, String)> {
+    fn get_recent_files(&mut self) -> Vec<(String, String)> {
         lazy_static! { static ref NAME_REGEX: Regex = Regex::new(r"([a-zA-Z0-9_-]+).(\w+)$").unwrap(); }
         let files_yaml = self.get_prefs_key("recent_files");
         let files: Vec<&str> = files_yaml.as_vec().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
@@ -631,7 +653,7 @@ impl Editor {
         files_with_names
     }
 
-    fn get_recent_paths(&self) -> Vec<(String, String)> {
+    fn get_recent_paths(&mut self) -> Vec<(String, String)> {
         lazy_static! { static ref NAME_REGEX: Regex = Regex::new(r"(\w+)/?$").unwrap(); }
         let folder_yaml = self.get_prefs_key("recent_folders");
         let folder: Vec<&str> = folder_yaml.as_vec().unwrap().iter().map(|f| f.as_str().unwrap()).collect();

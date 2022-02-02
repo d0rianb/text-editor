@@ -108,6 +108,7 @@ impl Line {
             diff -= self.buffer.len() as i32;
         }
         if font_formatted_string != self.previous_string || font.style_changed{
+            // self.formatted_text_block = font.layout_text(&font_formatted_string, TextOptions::default().with_wrap_to_width(font.editor_size.x, self.alignment.clone()));
             self.formatted_text_block = font.layout_text(&font_formatted_string, TextOptions::default());
             self.previous_string = font_formatted_string;
         }

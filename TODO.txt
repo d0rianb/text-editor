@@ -2,7 +2,6 @@
  - multiple cursors
  - formating (bold, italic, underline)
  - cmd-Z
- - Intervert line with cmd + ctrl
  - cmd-r --> dynamic research
  - find/replace
  - preferences
