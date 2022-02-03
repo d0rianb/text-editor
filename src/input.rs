@@ -1,8 +1,13 @@
+use std::cmp::Ordering;
+use std::fs;
+use std::rc::Rc;
 use lazy_static::lazy_static;
 use regex::Regex;
+use itertools::Itertools;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
+use speedy2d::font::{FormattedTextBlock, TextOptions};
 use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
 use speedy2d::window::{UserEventSender, VirtualKeyCode};
@@ -27,18 +32,21 @@ pub enum Validator {
 
 pub struct Input {
     pub editor: Editor,
-    is_focus: bool,
     pub menu_id: MenuId,
+    is_focus: bool,
     action_fn: MenuActionFn,
     width: f32,
     height: f32,
+    suggestion: String,
+    suggestion_offset: i32,
+    suggestion_test_layout: Rc<FormattedTextBlock>,
     validator: Validator,
     animation_width: Option<Animation>,
     intermediate_result: bool,
 }
 
 impl Editable for Input {
-    fn add_char(&mut self, c: String) { self.editor.add_char(c); self.on_insert() }
+    fn add_char(&mut self, c: String) { self.editor.add_char(c); self.on_insert(); self.set_suggestion(); }
 
     fn delete_char(&mut self) { self.editor.delete_char() }
 
@@ -46,23 +54,30 @@ impl Editable for Input {
         match keycode {
             VirtualKeyCode::Right => self.move_cursor_relative(1, 0),
             VirtualKeyCode::Left => self.move_cursor_relative(-1, 0),
-            VirtualKeyCode::Up => {},
-            VirtualKeyCode::Down => {},
+            VirtualKeyCode::Up => {},   // Move to other menu fields
+            VirtualKeyCode::Down => {}, // Move to other menu fields
             VirtualKeyCode::Backspace => self.delete_char(),
             VirtualKeyCode::Delete => { self.move_cursor_relative(1, 0); self.delete_char(); },
             VirtualKeyCode::Return => self.submit(),
             VirtualKeyCode::Escape => self.unfocus(),
-            VirtualKeyCode::Tab => {},
+            VirtualKeyCode::Tab => if self.editor.modifiers.shift() { self.suggestion_offset -= 1 } else { self.suggestion_offset += 1 },
             _ => return self.editor.handle_key(keycode)
         }
+        self.set_suggestion();
         self.update_text_layout();
     }
 
     fn move_cursor(&mut self, position: Vector2<u32>) { self.editor.move_cursor(position) }
 
-    fn move_cursor_relative(&mut self, rel_x: i32, rel_y: i32) {
+    fn move_cursor_relative(&mut self, rel_x: i32, _rel_y: i32) {
         if self.editor.cursor.x as i32 + rel_x < 0 { return self.unfocus(); }
-        self.editor.move_cursor_relative(rel_x, rel_y)
+        let line = &mut self.editor.lines[0];
+        if self.editor.cursor.x >= line.buffer.len() as u32 && rel_x > 0 {
+            line.add_text(&self.suggestion);
+            self.editor.move_cursor_relative(self.suggestion.len() as i32, 0);
+            return;
+        }
+        self.editor.move_cursor_relative(rel_x, 0)
     }
 
     fn shortcut(&mut self, c: char) {
@@ -111,6 +126,7 @@ impl Input {
         editor.set_offset(offset);
         editor.set_event_sender(Some(es));
         editor.camera.safe_zone_size = 0.;
+        let blank_text_layout = editor.lines[0].formatted_text_block.clone();
         Self {
             editor,
             is_focus: false,
@@ -118,6 +134,9 @@ impl Input {
             action_fn,
             width: 0.,
             height: 50.,
+            suggestion: "".into(),
+            suggestion_offset: 0,
+            suggestion_test_layout: blank_text_layout,
             validator: Validator::None,
             animation_width: Option::None,
             intermediate_result: false,
@@ -130,6 +149,7 @@ impl Input {
         if self.width == 0. { self.set_width(MIN_INPUT_WIDTH); }
         self.is_focus = true;
         self.editor.update_camera();
+        self.set_suggestion();
         self.editor.event_sender.as_ref().unwrap().send_event(
             EditorEvent::Focus(FocusElement::MenuInput(self.menu_id))
         ).unwrap()
@@ -161,6 +181,58 @@ impl Input {
 
     pub fn set_validator(&mut self, validator: Validator) {
         self.validator = validator;
+    }
+
+    fn get_sorted_suggestion_items(&self, input: &str) -> Vec<String> {
+        fs::read_dir(input)
+            .expect("Unable to access the sub directories")
+            .map(|dir_entry| {
+                let path_buf =  dir_entry.unwrap().path();
+                let mut name =  path_buf.file_name().unwrap().to_os_string();
+                if path_buf.is_dir() { name.push("/") }
+                name.to_str().unwrap().to_string()
+            })
+            .sorted_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()))
+            .sorted_by(|a, b| {
+                if b.starts_with('.') {
+                    if a.starts_with('.') { return a.to_lowercase().cmp(&b.to_lowercase()); };
+                    return Ordering::Less;
+                }
+                return Ordering::Greater;
+            })
+            .collect()
+    }
+
+    fn set_suggestion(&mut self) {
+        lazy_static! {
+            static ref PATH_REGEX: Regex = Regex::new(r"^.*/").unwrap();
+            static ref LAST_WORD_REGEX: Regex = Regex::new(r#"/([\w.\-\\\\ ]*)$"#).unwrap();
+        }
+        let input = self.editor.lines[0].get_text();
+        let path_groups = PATH_REGEX.captures(&input);
+        let last_word_groups = LAST_WORD_REGEX.captures(&input);
+        let path: &str = if path_groups.is_some() { path_groups.unwrap().get(0).map_or("", |m| m.as_str()) } else { "/" };
+        let last_word: &str = if last_word_groups.is_some() { last_word_groups.unwrap().get(1).map_or("", |m| m.as_str()) } else { "" };
+        let sorted_suggestions = self.get_sorted_suggestion_items(&path);
+        if sorted_suggestions.len() == 0  { self.suggestion = String::new() }
+        let nb_suggestions = sorted_suggestions.len();
+        if last_word == "" {
+            if self.suggestion_offset < 0 { self.suggestion_offset += nb_suggestions as i32 }
+            self.suggestion = sorted_suggestions[self.suggestion_offset as usize % nb_suggestions].to_string();
+            return;
+        }
+        let mut guess = String::new();
+        for i in 0 .. nb_suggestions {
+            let name = &sorted_suggestions[i] as &str;
+            if (&name.to_lowercase() as &str).cmp(&last_word.to_lowercase()).is_ge() && name.to_lowercase().starts_with(&last_word.to_lowercase()) {
+                let input_len = last_word.len();
+                if input_len <= name.len() {
+                    guess = name[input_len..].to_string();
+                    break;
+                }
+            }
+        }
+        self.suggestion = guess;
     }
 
     fn validate(&self, text: &str) -> bool {
@@ -204,7 +276,8 @@ impl Input {
 
     pub fn update_text_layout(&mut self) {
         self.editor.update_text_layout();
-        let width_left = self.width - self.editor.lines.first().unwrap().formatted_text_block.width();
+        self.suggestion_test_layout = self.editor.font.borrow().layout_text(&self.suggestion, TextOptions::default());
+        let width_left = self.width - self.editor.lines.first().unwrap().formatted_text_block.width() - self.suggestion_test_layout.width();
         const WIDTH_OFFSET: f32 = 2.;
         if width_left < WIDTH_OFFSET {
             self.set_width((self.width + WIDTH_OFFSET - width_left).clamp(MIN_INPUT_WIDTH, MAX_INPUT_WIDTH));
@@ -219,6 +292,8 @@ impl Input {
         draw_rounded_rectangle_with_border(x, y, self.computed_width(), self.height, 8., 0.5, Color::from_int_rgba(250, 250, 250, 255), graphics);
         // Draw text
         let line = self.editor.lines.first().unwrap();
+        let input_camera = Camera::from_with_offset(&self.editor.camera, Vector2::new(-x, -y));
+        self.editor.selection.render(&self.editor.lines, &input_camera, graphics);
         graphics.set_clip(Some(
             Rectangle::new(
                 Vector2::new(x as i32, y as i32),
@@ -226,10 +301,12 @@ impl Input {
             )
         ));
         line.render(x - self.editor.camera.computed_x(), y - self.editor.camera.computed_y(), graphics);
+        graphics.draw_text(
+            Vector2::new(x - self.editor.camera.computed_x() + line.formatted_text_block.width(), y - self.editor.camera.computed_y()),
+            Color::GRAY,
+            &self.suggestion_test_layout
+        );
         graphics.set_clip(Option::None);
-
-        let input_camera = Camera::from_with_offset(&self.editor.camera, Vector2::new(-x, -y));
         self.editor.cursor.render(&input_camera, graphics);
-        self.editor.selection.render(&self.editor.lines, &input_camera, graphics);
     }
 }

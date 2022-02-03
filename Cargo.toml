@@ -13,6 +13,7 @@ regex = "1"
 strum = "0.23"
 strum_macros = "0.23"
 ifmt = "0.3.3"
+itertools = "0.10.3"
 
 [profile.release]
 debug = false

@@ -162,7 +162,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     }
 
     fn on_keyboard_char(&mut self, helper: &mut WindowHelper<EditorEvent>, unicode_codepoint: char) {
-        if (' '..='~').contains(&unicode_codepoint) || unicode_codepoint >= '¡' {
+        if unicode_codepoint >= ' '  && unicode_codepoint <= '~' || unicode_codepoint >= '¡' {
             match self.focus {
                 FocusElement::Editor => {
                         self.editor.add_char(unicode_codepoint.to_string());
