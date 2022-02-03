@@ -62,7 +62,7 @@ impl Editor {
         let system_font = Rc::new(RefCell::new(Font::new(include_bytes!("../resources/font/Roboto-Regular.ttf"), width, height)));
         Self {
             cursor: Cursor::new(0, 0, Rc::clone(&font)),
-            camera: Camera::new(width, height, offset.clone(), padding),
+            camera: Camera::new(width, height, offset, padding),
             lines: vec![Line::new(Rc::clone(&font))],
             selection: Selection::new(Rc::clone(&font)),
             system_font: system_font.clone(),
@@ -89,7 +89,7 @@ impl Editable for Editor {
         // matching template
         let mut after = "";
         for template in [("(", ")"), ("[", "]"), ("{", "}"), ("\"", "\"")] {
-            if &c == template.0 { after = template.1; break }
+            if c == template.0 { after = template.1; break }
         }
         if after == "" { self.delete_selection(); }
         let pos = if self.selection.is_valid() { self.selection.start().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
@@ -126,10 +126,9 @@ impl Editable for Editor {
             let buffer = self.get_current_buffer();
             assert!(pos <= buffer.len() as i32);
             // Auto delete the matching template char if there are next to each other - ex: ""
-            if buffer.len() as i32 > pos && buffer.get(pos as usize - 1) == buffer.get(pos as usize) {
-                if ["(", "[", "{", "\""].contains(&buffer.get(pos as usize - 1).unwrap().as_str()) {
-                    buffer.remove(pos as usize);
-                }
+            if buffer.len() as i32 > pos && buffer.get(pos as usize - 1) == buffer.get(pos as usize)
+                && ["(", "[", "{", "\""].contains(&buffer.get(pos as usize - 1).unwrap().as_str()) {
+                buffer.remove(pos as usize);
             }
             buffer.remove(pos as usize - 1);
             self.move_cursor_relative(-1, 0);
@@ -156,7 +155,7 @@ impl Editable for Editor {
     }
 
     fn move_cursor(&mut self, position: Vector2<u32>) {
-        assert!(self.lines.len() > 0);
+        assert!(!self.lines.is_empty());
         let pos = self.get_valid_cursor_position(position);
         if pos.x != self.cursor.x || pos.y != self.cursor.y {
             self.cursor.move_to(pos.x, pos.y);
@@ -186,7 +185,8 @@ impl Editable for Editor {
             } else {
                 if rel_x < 0  { new_x = 0; }
                 else if rel_x > 0 { new_x = self.lines[self.cursor.y as usize].buffer.len() as i32; }
-                if rel_y < 0 { new_y = 0; } else if rel_y > 0 { new_y = self.lines.len() as i32 - 1; }
+                if rel_y < 0 { new_y = 0; }
+                else if rel_y > 0 { new_y = self.lines.len() as i32 - 1; }
             }
         }
 
@@ -283,7 +283,7 @@ impl Editable for Editor {
             }
             for i in 0 .. lines_indices.len() {
                 let index = initial_i + lines_indices.len() - i - 1;
-                if self.lines[index].buffer.len() == 0 && self.lines.len() > 1 {
+                if self.lines[index].buffer.is_empty() && self.lines.len() > 1 {
                     self.lines.remove(index);
                 }
             }
@@ -345,7 +345,7 @@ impl Editable for Editor {
                 let buffer_text = self.lines[y].buffer.get(j as usize);
                 if let Some(bt) = buffer_text { text.push_str(bt); }
             }
-            text.push_str("\n");
+            text.push('\n');
             buffer.push(text);
         }
         ctx.set_contents(buffer.join("")).unwrap();
@@ -356,7 +356,7 @@ impl Editable for Editor {
         let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
         let clipboard_content = ctx.get_contents().unwrap();
         if clipboard_content.is_empty() { return; }
-        let mut lines = clipboard_content.split("\n").filter(|c| *c != "");
+        let mut lines = clipboard_content.split('\n').filter(|c| *c != "");
         let mut text = lines.next();
         while text.is_some() {
             self.lines[self.cursor.y as usize].add_text(text.unwrap());
@@ -380,14 +380,14 @@ impl Editor {
     }
 
     fn send_event(&self, event: EditorEvent) {
-        self.event_sender.as_ref().clone().unwrap().send_event(event).unwrap();
+        self.event_sender.as_ref().unwrap().send_event(event).unwrap();
     }
 
     pub fn set_offset(&mut self, offset: Vector2<f32>) {
-        self.offset = offset.clone();
+        self.offset = offset;
         let width = self.system_font.borrow().editor_size.x; // Hack to get the original width back
         let height = self.system_font.borrow().editor_size.y; // Hack to get the original height back
-        self.camera = Camera::new(width, height, offset.clone(), self.padding);
+        self.camera = Camera::new(width, height, offset, self.padding);
         self.camera.event_sender = self.event_sender.clone();
         self.font.borrow_mut().editor_size.x = width - offset.x - self.padding * 2.;
         self.font.borrow_mut().editor_size.y = height - offset.y - self.padding * 2.;
@@ -620,10 +620,10 @@ impl Editor {
         let words_count = self.lines.iter().fold(0, |acc, line| acc + line.get_word_count());
         let char_count = self.lines.iter().fold(0, |acc, line| acc + line.buffer.len());
         vec![
-            iformat!("Nombre de mots: {words_count}").into(),
-            iformat!("Nombre de caractères: {char_count}").into(),
-            iformat!("Nombre de lignes: {self.lines.len()}").into(),
-            iformat!("Position du curseur: ({self.cursor.x}, {self.cursor.y})").into(),
+            iformat!("Nombre de mots: {words_count}"),
+            iformat!("Nombre de carapaces: {char_count}"),
+            iformat!("Nombre de lignes: {self.lines.len()}"),
+            iformat!("Position du curseur: ({self.cursor.x}, {self.cursor.y})"),
         ]
     }
 
@@ -638,7 +638,7 @@ impl Editor {
             prefs[key].clone()
         } else {
             let prefs_path = self.get_file_path("./resources/prefs.yaml");
-            let prefs_str = fs::read_to_string(prefs_path.clone()).expect("Can't find the preference file");
+            let prefs_str = fs::read_to_string(prefs_path).expect("Can't find the preference file");
             let docs: Vec<Yaml> = YamlLoader::load_from_str(&prefs_str).expect("Invalid preferences");
             let prefs = docs.get(0).unwrap();
             self.cached_prefs = Some(prefs.clone());
@@ -733,7 +733,7 @@ impl Editor {
             path_items.push(MenuItem::new(&name, MenuAction::SaveWithInput(path)));
         }
         let path_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
-        let mut file_items = vec![MenuItem::new_with_submenu("Save to >".into(), path_submenu)];
+        let mut file_items = vec![MenuItem::new_with_submenu("Save to >", path_submenu)];
         for (name, path) in self.get_recent_files() {
             file_items.push(MenuItem::new(&name, MenuAction::Save(path)));
         }
@@ -763,7 +763,7 @@ impl Editor {
             path_items.push(MenuItem::new(&name, MenuAction::OpenWithInput(path)));
         }
         let path_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
-        let mut menu_items = vec![MenuItem::new_with_submenu("Open ...".into(), path_submenu)];
+        let mut menu_items = vec![MenuItem::new_with_submenu("Open ...", path_submenu)];
         for (name, path) in self.get_recent_files() {
             menu_items.push(MenuItem::new(&name, MenuAction::Open(path)));
         }

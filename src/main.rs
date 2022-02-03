@@ -113,7 +113,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     }
 
     fn on_mouse_move(&mut self, helper: &mut WindowHelper<EditorEvent>, position: Vector2<f32>) {
-        self.mouse_position = position.clone();
+        self.mouse_position = position;
         if self.mouse_button_pressed.0 || self.editor.modifiers.shift() {
             self.editor.camera.safe_zone_size = 5.;
             self.editor.update_selection(position);
@@ -162,7 +162,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
     }
 
     fn on_keyboard_char(&mut self, helper: &mut WindowHelper<EditorEvent>, unicode_codepoint: char) {
-        if unicode_codepoint >= ' '  && unicode_codepoint <= '~' || unicode_codepoint >= '¡' {
+        if (' '..='~').contains(&unicode_codepoint) || unicode_codepoint >= '¡' {
             match self.focus {
                 FocusElement::Editor => {
                         self.editor.add_char(unicode_codepoint.to_string());

@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
-use speedy2d::font::{FormattedTextBlock, TextAlignment, TextOptions};
+use speedy2d::font::{FormattedTextBlock, TextOptions};
 use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
 use speedy2d::window::{ModifiersState, UserEventSender, VirtualKeyCode};
@@ -28,7 +28,7 @@ pub struct MenuItem {
 
 impl Debug for MenuItem {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "MenuItem : {} | {}", self.title, self.action.to_string())
+        write!(f, "MenuItem : {} | {}", self.title, self.action)
     }
 }
 
@@ -90,7 +90,7 @@ impl ContextualMenu {
 
     pub fn open(&mut self) {
         if self.is_visible { return; }
-        if self.items.len() == 0 {
+        if self.items.is_empty() {
             let empty_menu = MenuItem::new("Aucune suggestion", MenuAction::Void);
             self.set_items(vec![empty_menu]);
         }
@@ -151,7 +151,7 @@ impl ContextualMenu {
 
     pub fn send_key_to_input(&mut self, keycode: VirtualKeyCode, modifiers: ModifiersState) {
         if let Some(input) =  &mut self.get_focused_item().input {
-            input.editor.modifiers = modifiers.clone();
+            input.editor.modifiers = modifiers;
             match keycode {
                 VirtualKeyCode::Up => self.move_up(),
                 VirtualKeyCode::Down => self.move_down(),
@@ -255,7 +255,7 @@ impl ContextualMenu {
     }
 
     fn define_id(&mut self) {
-        let id = self.id.clone();
+        let id = self.id;
         for (i, item) in self.items.iter_mut().enumerate() {
             if let Some(sub_menu) = &mut item.sub_menu {
                 let mut sub_menu_id = id;
@@ -326,7 +326,7 @@ impl ContextualMenu {
     }
 
     pub fn render(&mut self, position: Vector2<f32>, graphics: &mut Graphics2D) {
-        if !self.is_visible && self.size_animation.y.is_none() || self.items.len() == 0 { return; }
+        if !self.is_visible && self.size_animation.y.is_none() || self.items.is_empty() { return; }
         let width = self.computed_width();
         let item_height = self.formatted_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING;
         let height = self.computed_height();

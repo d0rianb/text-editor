@@ -27,7 +27,7 @@ pub struct Selection {
 impl Clone for Selection {
     fn clone(&self) -> Self {
         Self {
-            range: self.range.clone(),
+            range: self.range,
             font: self.font.clone(),
             event_sender: self.event_sender.clone(),
             start_animation: Vector2::new(None, None),
@@ -103,7 +103,7 @@ impl Selection {
     }
 
     pub fn get_range(&self) -> Range {
-        self.range.clone()
+        self.range
     }
 
     fn computed_start(&self) -> Vector2<f32> {

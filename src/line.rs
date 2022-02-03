@@ -65,7 +65,7 @@ impl Line {
         self.buffer.join("")
     }
 
-    pub fn get_word_count(&self) -> u32 { self.buffer.join("").split(" ").filter(|w| *w != "").count() as u32 }
+    pub fn get_word_count(&self) -> u32 { self.buffer.join("").split(' ').filter(|w| *w != "").count() as u32 }
 
     pub fn get_word_at(&self, index: u32) -> (u32, u32) {
         let mut start_index = index;

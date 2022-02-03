@@ -130,7 +130,7 @@ impl Animation {
     #[inline]
     #[allow(dead_code)]
     pub fn is_running(&self) -> bool {
-        return self.has_started && !(self.is_ended || self.is_paused);
+        self.has_started && !(self.is_ended || self.is_paused)
     }
 
     pub fn on_finish(&self) {
