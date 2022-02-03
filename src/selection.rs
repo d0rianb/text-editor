@@ -107,18 +107,20 @@ impl Selection {
     }
 
     fn computed_start(&self) -> Vector2<f32> {
-        if !self.is_valid() { return Vector2::ZERO }
+        assert!(self.is_valid());
         let start = self.start().unwrap();
-        let x = if let Some(animation) = &self.start_animation.x { animation.value } else { start.x as f32 * self.font.borrow().char_width };
-        let y = if let Some(animation) = &self.start_animation.y { animation.value } else { start.y as f32 * self.font.borrow().char_height };
+        let animation = if start == self.range.start.unwrap() { &self.start_animation } else { &self.end_animation };
+        let x = if let Some(animation) = &animation.x { animation.value } else { start.x as f32 * self.font.borrow().char_width };
+        let y = if let Some(animation) = &animation.y { animation.value } else { start.y as f32 * self.font.borrow().char_height };
         Vector2::new(x, y)
     }
 
     fn computed_end(&self) -> Vector2<f32> {
-        if !self.is_valid() { return Vector2::ZERO }
+        assert!(self.is_valid());
         let end = self.end().unwrap();
-        let x = if let Some(animation) = &self.end_animation.x { animation.value } else { end.x as f32 * self.font.borrow().char_width };
-        let y = if let Some(animation) = &self.end_animation.y { animation.value } else { end.y as f32 * self.font.borrow().char_height };
+        let animation = if end == self.range.end.unwrap() { &self.end_animation } else { &self.start_animation };
+        let x = if let Some(animation) = &animation.x { animation.value } else { end.x as f32 * self.font.borrow().char_width };
+        let y = if let Some(animation) = &animation.y { animation.value } else { end.y as f32 * self.font.borrow().char_height };
         Vector2::new(x, y)
     }
 
@@ -145,13 +147,14 @@ impl Selection {
     pub fn render(&mut self, lines: &[Line], camera: &Camera, graphics: &mut Graphics2D) {
         if !self.is_valid() { return; }
         let font_height = self.font.borrow().char_height;
-        let initial_y = self.computed_start().y - camera.computed_y();
+        let initial_y = self.start().unwrap().y as f32 * font_height - camera.computed_y();
         let lines_bounds = self.get_lines_bounds(lines);
         for (i, bounds) in lines_bounds.iter().enumerate() { // TODO: cache ?
             let mut line_y = initial_y + i as f32 * font_height;
             let line = &lines[self.start().unwrap().y as usize + i];
             let line_offset = line.alignment_offset;
             let line_camera = Camera::from_with_offset(camera, Vector2::new(-line_offset, 0.));
+            if i == 0 { line_y = self.computed_start().y - camera.computed_y() }
             if i + 1 == lines_bounds.len() { line_y = self.computed_end().y - camera.computed_y() }
             graphics.draw_rectangle(
                 Rectangle::new(

@@ -3,7 +3,6 @@ use std::rc::Rc;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
-use speedy2d::shape::Rectangle;
 use speedy2d::Graphics2D;
 use speedy2d::window::UserEventSender;
 
@@ -11,8 +10,9 @@ use crate::animation::{Animation, EasingFunction};
 use crate::camera::Camera;
 use crate::EditorEvent;
 use crate::font::Font;
+use crate::render_helper::draw_rounded_line;
 
-pub const CURSOR_WIDTH: f32 = 3.0;
+pub const CURSOR_WIDTH: f32 = 3.;
 pub const CURSOR_OFFSET_X: f32 = 2.0;
 
 #[allow(dead_code)]
@@ -80,24 +80,19 @@ impl Cursor {
         self.animation.y = Some(new_animation_y);
     }
 
-    fn get_carret_rectangle(&self, camera: &Camera) -> Rectangle<f32> {
-        let x = self.computed_x() - camera.computed_x();
-        let y = self.computed_y() - camera.computed_y();
-        Rectangle::new(
-            Vector2::new(x + CURSOR_OFFSET_X, y),
-            Vector2::new(
-                (x + CURSOR_OFFSET_X + CURSOR_WIDTH) as f32,
-                y + self.font.borrow().char_height,
-            ),
-        )
-    }
-
     pub fn render(&self, camera: &Camera, graphics: &mut Graphics2D) {
         match self.cursor_type {
-            CursorType::Carret => graphics.draw_rectangle(self.get_carret_rectangle(camera), Color::BLACK),
+            CursorType::Carret => draw_rounded_line(
+                self.computed_x() - camera.computed_x() + CURSOR_OFFSET_X,
+                self.computed_y() - camera.computed_y(),
+                CURSOR_WIDTH,
+                self.font.borrow().char_height,
+                Color::BLACK,
+                graphics
+            ),
             CursorType::Cross => {
-                let x = -camera.computed_x() + self.computed_x() + self.font.borrow().char_width /2.;
-                let y = -camera.computed_y() + self.computed_y() + self.font.borrow().char_height /2.;
+                let x = -camera.computed_x() + self.computed_x() + self.font.borrow().char_width / 2.;
+                let y = -camera.computed_y() + self.computed_y() + self.font.borrow().char_height / 2.;
                 graphics.draw_line(Vector2::new(x, 0.),Vector2::new(x, self.font.borrow().editor_size.y - camera.computed_y()), CURSOR_WIDTH/5., Color::BLACK);
                 graphics.draw_line(Vector2::new(0., y),Vector2::new(self.font.borrow().editor_size.x - camera.computed_x(), y), CURSOR_WIDTH/5., Color::BLACK);
             },

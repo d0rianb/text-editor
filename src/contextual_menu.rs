@@ -77,7 +77,7 @@ impl ContextualMenu {
             previous_focus: FocusElement::Editor,
             event_sender: Option::None,
             size_animation: Vector2::new(Option::None, Option::None),
-            focus_y_animation: Option::None
+            focus_y_animation: Option::None,
         }
     }
 
@@ -137,6 +137,14 @@ impl ContextualMenu {
             VirtualKeyCode::Return => self.select(),
             VirtualKeyCode::Escape => self.event_sender.as_ref().unwrap().send_event(EditorEvent::MenuItemSelected(MenuAction::CloseMenu)).unwrap(),
             VirtualKeyCode::Tab => { if !modifiers.shift() { self.move_down() } else { self.move_up() } },
+            VirtualKeyCode::LShift
+            | VirtualKeyCode::RShift
+            | VirtualKeyCode::LControl
+            | VirtualKeyCode::RControl
+            | VirtualKeyCode::LWin
+            | VirtualKeyCode::RWin
+            | VirtualKeyCode::LAlt
+            | VirtualKeyCode::RAlt => {}, // Prevent closing the menu while pressing a modifier
             _ => self.close()
         }
     }
@@ -313,7 +321,7 @@ impl ContextualMenu {
     pub fn update_content(&mut self) {
         self.formatted_items = self.items
             .iter()
-            .map(|item| self.system_font.borrow().layout_text(&item.title, TextOptions::default())) // TDOD: wrap on max size
+            .map(|item| self.system_font.borrow().layout_text(&item.title, TextOptions::default())) // TODO: wrap on max size
             .collect();
     }
 

@@ -107,24 +107,12 @@ impl Range {
 
     pub fn get_real_start(&self) -> Option<Vector2<u32>> {
         if !self.is_valid() { return Option::None; }
-        let start = self.start.unwrap();
-        let end = self.end.unwrap();
-        if start.y == end.y {
-            return if start.x < end.x {
-                Some(start)
-            } else {
-                Some(end)
-            }
-        }
-        if start.y < end.y {
-            return Some(start);
-        }
-        return Some(end);
+        Some(vector_min(self.start.unwrap(), self.end.unwrap()))
     }
 
     pub fn get_real_end(&self) -> Option<Vector2<u32>> {
         if !self.is_valid() { return Option::None; }
-        if self.get_real_start() == self.start { self.end } else { self.start }
+        Some(vector_max(self.start.unwrap(), self.end.unwrap()))
     }
 
     pub fn get_lines_index(&mut self, lines: &[Line]) -> Vec<(u32, u32)> {

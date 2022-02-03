@@ -265,6 +265,9 @@ impl Editable for Editor {
 
     fn update_selection(&mut self, position: Vector2<f32>) {
         let mouse_position = self.get_mouse_position_index(position);
+        if let Some(end) = &self.selection.end() {
+            if mouse_position == *end { return; }
+        }
         self.selection.set_end(mouse_position);
         self.move_cursor(mouse_position);
     }
