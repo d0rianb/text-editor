@@ -33,6 +33,22 @@ use crate::editable::Editable;
 pub const EDITOR_PADDING: f32 = 10.;
 pub const EDITOR_OFFSET_TOP: f32 = 55.;
 
+#[cfg(debug_assertions)]
+fn get_working_dir() -> PathBuf { env::current_dir().unwrap() }
+
+#[cfg(not(debug_assertions))]
+fn get_working_dir() -> PathBuf {
+    let path_buf = env::current_exe().unwrap();
+    path_buf.parent().unwrap().to_path_buf()
+}
+
+pub fn get_file_path(filename: &str) -> String {
+    let mut wd = get_working_dir();
+    wd.push(filename);
+    let valid_file_path = wd.canonicalize().expect(&format!("Invalid path : {:?}", wd));
+    valid_file_path.into_os_string().to_str().unwrap().to_string()
+}
+
 pub struct Editor {
     pub lines: Vec<Line>,
     pub cursor: Cursor,
@@ -54,12 +70,11 @@ pub struct Editor {
 impl Editor {
     pub fn new(width: f32, height: f32, offset: Vector2<f32>, padding: f32) -> Self {
         let font = Rc::new(RefCell::new(Font::new(
-            include_bytes!("../resources/font/CourierRegular.ttf"),
-            // "resources/font/Monaco.ttf",
-            width - offset.x - padding*2.,
-            height - offset.y - padding*2.,
+            &get_file_path("./resources/font/CourierRegular.ttf"),
+            width - offset.x - padding * 2.,
+            height - offset.y - padding * 2.,
         )));
-        let system_font = Rc::new(RefCell::new(Font::new(include_bytes!("../resources/font/Roboto-Regular.ttf"), width, height)));
+        let system_font = Rc::new(RefCell::new(Font::new(&get_file_path("./resources/font/Roboto-Regular.ttf"), width, height)));
         Self {
             cursor: Cursor::new(0, 0, Rc::clone(&font)),
             camera: Camera::new(width, height, offset, padding),
@@ -637,10 +652,10 @@ impl Editor {
         if let Some(prefs) = &self.cached_prefs {
             prefs[key].clone()
         } else {
-            let prefs_path = self.get_file_path("./resources/prefs.yaml");
+            let prefs_path = get_file_path("./resources/prefs.yaml");
             let prefs_str = fs::read_to_string(prefs_path).expect("Can't find the preference file");
             let docs: Vec<Yaml> = YamlLoader::load_from_str(&prefs_str).expect("Invalid preferences");
-            let prefs = docs.get(0).unwrap();
+            let prefs: &Yaml = docs.get(0).unwrap();
             self.cached_prefs = Some(prefs.clone());
             prefs[key].clone()
         }
@@ -686,22 +701,6 @@ impl Editor {
         self.delete_selection();
         self.save_to_file(path);
         self.load_file(path);
-    }
-
-    #[cfg(debug_assertions)]
-    fn get_working_dir(&self) -> PathBuf { env::current_dir().unwrap() }
-
-    #[cfg(not(debug_assertions))]
-    fn get_working_dir(&self) -> PathBuf {
-        let path_buf = env::current_exe().unwrap();
-        path_buf.parent().unwrap().to_path_buf()
-    }
-
-    pub fn get_file_path(&self, filename: &str) -> String {
-        let mut wd = self.get_working_dir();
-        wd.push(filename);
-        let valid_file_path = wd.canonicalize().expect(&format!("Invalid path : {:?}", wd));
-        valid_file_path.into_os_string().to_str().unwrap().to_string()
     }
 
     fn print_dir(&mut self) {

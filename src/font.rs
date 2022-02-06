@@ -1,3 +1,5 @@
+use std::fs;
+use std::path::Path;
 use std::rc::Rc;
 
 use speedy2d::dimen::Vector2;
@@ -19,12 +21,13 @@ pub struct Font {
 }
 
 impl Font {
-    pub fn new(bytes: &[u8], editor_width: f32, editor_height: f32) -> Self {
-        let font_file_content = bytes;
-        let s2d_font = S2DFont::new(font_file_content).unwrap();
+    pub fn new(path: &str, editor_width: f32, editor_height: f32) -> Self {
+        let filename = Path::new(path).file_name().unwrap().to_str().unwrap();
+        let font_file_content = fs::read(path).unwrap();
+        let s2d_font = S2DFont::new(font_file_content.as_slice()).unwrap();
         let font_layout = s2d_font.layout_text("a", 2.0 * DEFAULT_FONT_SIZE as f32, TextOptions::default());
         Self {
-            name: "src".to_string(),
+            name: filename.to_string(),
             size: DEFAULT_FONT_SIZE,
             char_width: font_layout.width(),
             char_height: font_layout.height(),
