@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
+use lazy_static::lazy_static;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -336,8 +337,12 @@ impl ContextualMenu {
         if menu_origin.y + height > editor_size.y { menu_origin.y -= menu_origin.y + height - editor_size.y }
         let highlight_color: Color = Color::from_int_rgba(225, 225, 225, 255);
         const BORDER_WIDTH: f32 = 0.5;
+        lazy_static! {
+            static ref BG_COLOR: Color = Color::from_int_rgb(250, 250, 250);
+            static ref BORDER_COLOR: Color = Color::from_int_rgb(150, 150, 150);
+        }
         // draw background
-        draw_rounded_rectangle_with_border(menu_origin.x, menu_origin.y, width, height, 8., BORDER_WIDTH, Color::from_int_rgba(250, 250, 250, 250), graphics);
+        draw_rounded_rectangle_with_border(menu_origin.x, menu_origin.y, width, height, 8., BORDER_WIDTH, *BG_COLOR, *BORDER_COLOR, graphics);
         for (i, item) in self.items.iter_mut().enumerate() {
             // draw highlight
             if i == self.focus_index as usize && item.action != MenuAction::Information {

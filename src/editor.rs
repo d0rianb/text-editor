@@ -771,7 +771,6 @@ impl Editor {
 
     /// Load a specific path
     pub fn load_file(&mut self, filepath: &str) {
-        // TODO: check that the path is valid
         let valid_filepath = fs::canonicalize(filepath).expect("Invalid filepath");
         self.lines = vec![Line::new(Rc::clone(&self.font))];
         self.underline_buffer = vec![];

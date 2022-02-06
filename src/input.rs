@@ -43,12 +43,13 @@ pub struct Input {
     validator: Validator,
     animation_width: Option<Animation>,
     intermediate_result: bool,
+    has_error: bool,
 }
 
 impl Editable for Input {
     fn add_char(&mut self, c: String) { self.editor.add_char(c); self.on_insert(); self.set_suggestion(); }
 
-    fn delete_char(&mut self) { self.editor.delete_char() }
+    fn delete_char(&mut self) { self.editor.delete_char(); self.on_insert(); self.set_suggestion(); }
 
     fn handle_key(&mut self, keycode: VirtualKeyCode) {
         match keycode {
@@ -140,6 +141,7 @@ impl Input {
             validator: Validator::None,
             animation_width: Option::None,
             intermediate_result: false,
+            has_error: false
         }
     }
 
@@ -245,6 +247,7 @@ impl Input {
     }
 
     fn on_insert(&mut self) {
+        if self.has_error { self.has_error = false; }
         if !self.intermediate_result { return; }
         let result = self.editor.lines.first().unwrap().get_text();
         self.editor.event_sender.as_ref().unwrap().send_event(
@@ -254,7 +257,10 @@ impl Input {
 
     fn submit(&mut self) {
         let result = self.editor.lines.first().unwrap().get_text();
-        if !self.validate(&result) { return; } // TODO: error
+        if !self.validate(&result) {
+            self.has_error = true;
+            return;
+        }
         self.editor.event_sender.as_ref().unwrap().send_event(
             EditorEvent::MenuItemSelected((self.action_fn)(result))
         ).unwrap();
@@ -288,8 +294,15 @@ impl Input {
 
     pub fn render(&mut self, x: f32, y: f32, graphics: &mut Graphics2D) {
         if !self.is_focus { return; }
+        lazy_static! {
+            static ref BG_COLOR: Color = Color::from_int_rgb(250, 250, 250);
+            static ref BORDER_COLOR: Color = Color::from_int_rgb(150, 150, 150);
+            static ref ERROR_BORDER_COLOR: Color = Color::from_int_rgb(235, 20, 20);
+        }
+
         // Draw background
-        draw_rounded_rectangle_with_border(x, y, self.computed_width(), self.height, 8., 0.5, Color::from_int_rgba(250, 250, 250, 255), graphics);
+        let border_color: Color = if self.has_error { *ERROR_BORDER_COLOR } else { *BORDER_COLOR };
+        draw_rounded_rectangle_with_border(x, y, self.computed_width(), self.height, 8., 0.5, *BG_COLOR, border_color, graphics);
         // Draw text
         let line = self.editor.lines.first().unwrap();
         let input_camera = Camera::from_with_offset(&self.editor.camera, Vector2::new(-x, -y));

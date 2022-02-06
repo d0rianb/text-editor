@@ -25,12 +25,11 @@ pub fn _draw_rect_border(origin: Vector2<f32>, width: f32, height: f32, thicknes
 
 
 #[inline]
-pub fn draw_rounded_rectangle_with_border(x: f32, y: f32, width: f32, height: f32, radius: f32, border_width: f32, color: Color, graphics: &mut Graphics2D) {
-    lazy_static! { static ref BORDER_COLOR: Color = Color::from_int_rgba(150, 150, 150, 250); }
+pub fn draw_rounded_rectangle_with_border(x: f32, y: f32, width: f32, height: f32, radius: f32, border_width: f32, bg_color: Color, border_color: Color, graphics: &mut Graphics2D) {
     // draw border
-    draw_rounded_rectangle(x - border_width, y - border_width, width + 2. * border_width, height + 2. * border_width, radius - border_width, *BORDER_COLOR, graphics);
+    draw_rounded_rectangle(x - border_width, y - border_width, width + 2. * border_width, height + 2. * border_width, radius - border_width, border_color, graphics);
     // draw background
-    draw_rounded_rectangle(x, y, width, height, radius, color, graphics);
+    draw_rounded_rectangle(x, y, width, height, radius, bg_color, graphics);
 }
 
 #[inline]
