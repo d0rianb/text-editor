@@ -130,16 +130,17 @@ impl Selection {
 
     fn get_lines_bounds(&mut self, lines: &[Line]) -> Vec<(f32, f32)> {
         if !self.is_valid() { return vec![]; }
-        let font_height = self.font.borrow().char_height;
+        let font_width = self.font.borrow().char_width;
         let start = self.start().unwrap();
         let end = self.end().unwrap();
         let mut result = vec![];
         for y in start.y..=end.y {
             if y == start.y {
-                if start.y == end.y {
-                    result.push((self.computed_start().x, self.computed_end().x)) } else { result.push((self.computed_start().x, get_line_length(y, lines) as f32 * font_height))
+                if start.y == end.y { result.push((self.computed_start().x, self.computed_end().x)) }
+                else { result.push((self.computed_start().x, get_line_length(y, lines) as f32 * font_width))
                 }
-            } else if y == end.y { result.push((0., self.computed_end().x)) } else { result.push((0., get_line_length(y, lines) as f32 * font_height)) }
+            } else if y == end.y { result.push((0., self.computed_end().x)) }
+            else { result.push((0., get_line_length(y, lines) as f32 * font_width)) }
         }
         result
     }
@@ -151,7 +152,7 @@ impl Selection {
         let lines_bounds = self.get_lines_bounds(lines);
         for (i, bounds) in lines_bounds.iter().enumerate() { // TODO: cache ?
             let mut line_y = initial_y + i as f32 * font_height;
-            let line = &lines[self.start().unwrap().y as usize + i];
+            let line: &Line = &lines[self.start().unwrap().y as usize + i];
             let line_offset = line.alignment_offset;
             let line_camera = Camera::from_with_offset(camera, Vector2::new(-line_offset, 0.));
             if i == 0 { line_y = self.computed_start().y - camera.computed_y() }

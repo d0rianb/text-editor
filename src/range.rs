@@ -13,7 +13,7 @@ use crate::font::Font;
 use crate::line::Line;
 
 pub fn get_line_length(i: u32, lines: &[Line]) -> u32 {
-    if i + 1 > lines.len() as u32 { return 0; }
+    if i + 1 > lines.len() as u32 { return 0; } // Prevent overflow
     lines[i as usize].buffer.len() as u32
 }
 
