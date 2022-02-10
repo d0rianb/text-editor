@@ -128,7 +128,7 @@ impl Selection {
         self.range.get_lines_index(lines)
     }
 
-    fn get_lines_bounds(&mut self, lines: &[Line]) -> Vec<(f32, f32)> {
+    fn get_lines_bounds(&self, lines: &[Line]) -> Vec<(f32, f32)> {
         if !self.is_valid() { return vec![]; }
         let font_width = self.font.borrow().char_width;
         let start = self.start().unwrap();
@@ -145,7 +145,7 @@ impl Selection {
         result
     }
 
-    pub fn render(&mut self, lines: &[Line], camera: &Camera, graphics: &mut Graphics2D) {
+    pub fn render(&self, lines: &[Line], camera: &Camera, graphics: &mut Graphics2D) {
         if !self.is_valid() { return; }
         let font_height = self.font.borrow().char_height;
         let initial_y = self.start().unwrap().y as f32 * font_height - camera.computed_y();

@@ -8,6 +8,7 @@ pub enum MenuAction {
     OpenWithInput(String),
     Save(String),
     SaveWithInput(String),
+    Separator,
     Void,
     Information,
     Exit,

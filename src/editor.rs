@@ -166,7 +166,7 @@ impl Editable for Editor {
             VirtualKeyCode::Down => self.move_cursor_relative(0, 1),
             VirtualKeyCode::Backspace => self.delete_char(),
             VirtualKeyCode::Delete => { self.move_cursor_relative(1, 0); self.delete_char(); },
-            VirtualKeyCode::Return => if self.modifiers.alt() { self.toggle_ai_contextual_menu() } else { self.new_line() },
+            VirtualKeyCode::Return => if self.modifiers.alt() { self.toggle_contextual_menu() } else { self.new_line() },
             VirtualKeyCode::Escape => self.menu.close(),
             VirtualKeyCode::Tab => if self.modifiers.alt() { self.menu.open() },
             _ => { return; },
@@ -525,6 +525,7 @@ impl Editor {
                 MenuItem::new("Copy", MenuAction::Copy),
                 MenuItem::new("Cut", MenuAction::Cut),
                 MenuItem::new("Paste", MenuAction::Paste),
+                MenuItem::separator(),
                 MenuItem::new("Bold", MenuAction::Bold),
                 MenuItem::new("Underline", MenuAction::Underline),
             ] { items.push(i) }
@@ -660,6 +661,7 @@ impl Editor {
             iformat!("Nombre de carapaces: {char_count}"),
             iformat!("Nombre de lignes: {self.lines.len()}"),
             iformat!("Position du curseur: ({self.cursor.x}, {self.cursor.y})"),
+            iformat!("---"),
             iformat!("Update time: {update_duration:.1}ms"),
             iformat!("Draw time: {draw_duration:.1}ms"),
         ]
@@ -667,7 +669,10 @@ impl Editor {
 
     fn toggle_stats_popup(&mut self) {
         if self.menu.is_visible { return self.menu.close(); }
-        self.menu.open_with(self.get_stats().iter().map(|s| MenuItem::new(s, MenuAction::Information)).collect());
+        self.menu.open_with(self.get_stats().iter().map(|s| {
+            if s.starts_with("---") { return MenuItem::separator() }
+            MenuItem::new(s, MenuAction::Information)
+        }).collect());
         self.send_event(EditorEvent::Focus(FocusElement::Editor));
     }
 
@@ -785,7 +790,7 @@ impl Editor {
             path_items.push(MenuItem::new(&name, MenuAction::OpenWithInput(path)));
         }
         let path_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
-        let mut menu_items = vec![MenuItem::new_with_submenu("Open ...", path_submenu)];
+        let mut menu_items = vec![MenuItem::new_with_submenu("Open ...", path_submenu), MenuItem::separator()];
         for (name, path) in self.get_recent_files() {
             menu_items.push(MenuItem::new(&name, MenuAction::Open(path)));
         }
@@ -832,7 +837,10 @@ impl Editor {
 
     fn update_stats(&mut self) {
         if self.menu.is_visible && self.menu.get_focused_item().action == MenuAction::Information {
-            self.menu.set_items(self.get_stats().iter().map(|s| MenuItem::new(s, MenuAction::Information)).collect());
+            self.menu.set_items(self.get_stats().iter().map(|s| {
+                if s.starts_with("---") { return MenuItem::separator() }
+                MenuItem::new(s, MenuAction::Information)
+            }).collect());
         }
     }
 

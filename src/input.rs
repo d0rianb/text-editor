@@ -293,7 +293,7 @@ impl Input {
         }
     }
 
-    pub fn render(&mut self, x: f32, y: f32, graphics: &mut Graphics2D) {
+    pub fn render(&self, x: f32, y: f32, graphics: &mut Graphics2D) {
         if !self.is_focus { return; }
         lazy_static! {
             static ref BG_COLOR: Color = Color::from_int_rgb(250, 250, 250);

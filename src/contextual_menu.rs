@@ -15,9 +15,10 @@ use crate::menu_actions::MenuAction;
 use crate::animation::{Animation, EasingFunction};
 use crate::font::Font;
 use crate::input::{Input, Validator};
-use crate::render_helper::{draw_rounded_rectangle, draw_rounded_rectangle_with_border};
+use crate::render_helper::{draw_rectangle, draw_rounded_rectangle, draw_rounded_rectangle_with_border};
 
 const ITEM_PADDING: f32 = 5.;
+const SEPARATOR_HEIGHT_RATIO: f32 = 1. / 10.;
 const ANIMATION_DURATION: f32 = 100.;
 
 pub struct MenuItem {
@@ -30,6 +31,12 @@ pub struct MenuItem {
 impl Debug for MenuItem {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "MenuItem : {} | {}", self.title, self.action)
+    }
+}
+
+impl PartialEq for MenuItem {
+    fn eq(&self, other: &Self) -> bool {
+        self.title == other.title && self.action == other.action
     }
 }
 
@@ -51,6 +58,16 @@ impl MenuItem {
             input: Option::None,
         }
     }
+
+    pub fn separator() -> Self {
+        Self {
+            title: "#separator#".to_string(),
+            action: MenuAction::Separator,
+            sub_menu: Option::None,
+            input: Option::None,
+        }
+    }
+
 }
 
 pub struct ContextualMenu {
@@ -166,25 +183,33 @@ impl ContextualMenu {
     fn move_up(&mut self) {
         if !self.is_focus() { return; }
         let mut index = self.focus_index as i32 - 1;
-        let start_index = if let Some(animation) = &self.focus_y_animation { animation.value } else { self.focus_index as f32 };
-        if index < 0 { index += self.items.len() as i32}
+        let start_y = if let Some(animation) = &self.focus_y_animation { animation.value } else { self.get_item_offset_y(self.focus_index as usize) };
         self.set_focus(index as isize);
-        self.focus_y_animation = Some(Animation::new(start_index, self.focus_index as f32, ANIMATION_DURATION, EasingFunction::EaseOut, self.event_sender.clone().unwrap()));
+        self.focus_y_animation = Some(Animation::new(start_y, self.get_item_offset_y(self.focus_index as usize), ANIMATION_DURATION, EasingFunction::EaseOut, self.event_sender.clone().unwrap()));
     }
 
     fn move_down(&mut self) {
         if !self.is_focus() { return; }
-        let start_index = if let Some(animation) = &self.focus_y_animation { animation.value } else { self.focus_index as f32 };
-        self.set_focus((self.focus_index + 1) % self.items.len() as isize);
-        self.focus_y_animation = Some(Animation::new(start_index, self.focus_index as f32, ANIMATION_DURATION, EasingFunction::EaseOut, self.event_sender.clone().unwrap()));
+        let start_y = if let Some(animation) = &self.focus_y_animation { animation.value } else { self.get_item_offset_y(self.focus_index as usize) };
+        self.set_focus(self.focus_index + 1);
+        self.focus_y_animation = Some(Animation::new(start_y, self.get_item_offset_y(self.focus_index as usize), ANIMATION_DURATION, EasingFunction::EaseOut, self.event_sender.clone().unwrap()));
     }
 
     fn set_focus(&mut self, index: isize) {
-        self.focus_index = index;
-        let item = self.get_focused_item();
-        if let Some(sub_menu) = &mut item.sub_menu { sub_menu.open(); }
-        else if let Some(input) = &mut item.input {
-            match &item.action {
+        let dir = index - self.focus_index;
+        self.focus_index = index % self.items.len() as isize;
+        if self.focus_index < 0 { self.focus_index += self.items.len() as isize }
+        for item in self.items.iter_mut() {
+            if let Some(sub_menu) = &mut item.sub_menu { sub_menu.close_submenu() }
+        }
+        let focus_item = self.get_focused_item();
+        if focus_item.action == MenuAction::Separator { return self.set_focus(index + dir) }
+        if let Some(sub_menu) = &mut focus_item.sub_menu {
+            sub_menu.open()
+        }
+
+        if let Some(input) = &mut focus_item.input {
+            match &focus_item.action {
                 MenuAction::SaveWithInput(path)
                 | MenuAction::NewFileWithInput(path)
                 | MenuAction::OpenWithInput(path) => { input.set_placeholder(path); input.set_validator(Validator::File) },
@@ -306,9 +331,13 @@ impl ContextualMenu {
         self.focus();
     }
 
-    fn width(&self) -> f32 { self.formatted_items.iter().map(|ftb| ftb.width()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + 8. * ITEM_PADDING}
+    fn width(&self) -> f32 { self.formatted_items.iter().map(|ftb| ftb.width()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + 8. * ITEM_PADDING }
 
-    fn height(&self) -> f32 { (self.formatted_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING) * self.items.len() as f32 + ITEM_PADDING}
+    fn height(&self) -> f32 {
+        let separator_count = self.items.iter().filter(|&item| item.action == MenuAction::Separator).count();
+        let item_height = self.formatted_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING;
+        item_height * (self.items.len() - separator_count) as f32 + ITEM_PADDING + separator_count as f32 * SEPARATOR_HEIGHT_RATIO * item_height
+    }
 
     pub fn computed_width(&self) -> f32 {
         if let Some(animation) = &self.size_animation.x { animation.value } else { self.width() }
@@ -318,6 +347,13 @@ impl ContextualMenu {
         if let Some(animation) = &self.size_animation.y { animation.value } else { self.height() }
     }
 
+    fn get_item_offset_y<T: Into<usize>>(&self, i: T) -> f32 {
+        let index = i.into();
+        let separator_count = self.items[..index].iter().filter(|&item| item.action == MenuAction::Separator).count();
+        let item_height = self.formatted_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING;
+        item_height * (index - separator_count) as f32  + separator_count as f32 * item_height * SEPARATOR_HEIGHT_RATIO
+    }
+
     pub fn update_content(&mut self) {
         self.formatted_items = self.items
             .iter()
@@ -325,7 +361,7 @@ impl ContextualMenu {
             .collect();
     }
 
-    pub fn render(&mut self, position: Vector2<f32>, graphics: &mut Graphics2D) {
+    pub fn render(&self, position: Vector2<f32>, graphics: &mut Graphics2D) {
         if !self.is_visible && self.size_animation.y.is_none() || self.items.is_empty() { return; }
         let width = self.computed_width();
         let item_height = self.formatted_items.iter().map(|ftb| ftb.height()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + ITEM_PADDING;
@@ -339,28 +375,41 @@ impl ContextualMenu {
         lazy_static! {
             static ref BG_COLOR: Color = Color::from_int_rgb(250, 250, 250);
             static ref BORDER_COLOR: Color = Color::from_int_rgb(150, 150, 150);
+            static ref SEPARATOR_COLOR: Color = Color::from_int_rgb(200, 200, 200);
         }
         // draw background
         draw_rounded_rectangle_with_border(menu_origin.x, menu_origin.y, width, height, 8., BORDER_WIDTH, *BG_COLOR, *BORDER_COLOR, graphics);
-        for (i, item) in self.items.iter_mut().enumerate() {
+        for (i, item) in self.items.iter().enumerate() {
+            let y = menu_origin.y + self.get_item_offset_y(i);
+            if item.action == MenuAction::Separator {
+                // Handle separators
+                const SEPARATOR_HEIGHT: f32 = 1.;
+                draw_rectangle(menu_origin.x + ITEM_PADDING * 3., y + item_height * SEPARATOR_HEIGHT_RATIO / 2. - SEPARATOR_HEIGHT / 2. + ITEM_PADDING / 2., width - ITEM_PADDING * 6., SEPARATOR_HEIGHT, *SEPARATOR_COLOR, graphics);
+                continue;
+            }
             // draw highlight
             if i == self.focus_index as usize && item.action != MenuAction::Information {
-                let computed_i = if let Some(animated_i) = &self.focus_y_animation { animated_i.value } else { i as f32 };
-                draw_rounded_rectangle(menu_origin.x, menu_origin.y + item_height * computed_i, width, item_height + ITEM_PADDING, 10., highlight_color, graphics);
-                if let Some(sub_menu) = &mut item.sub_menu {
-                    sub_menu.render(Vector2::new(menu_origin.x + width, menu_origin.y + item_height * computed_i), graphics);
-                } else if let Some(input) = &mut item.input {
-                    input.render(menu_origin.x + width, menu_origin.y + item_height * computed_i, graphics);
+                let offset_y = if let Some(animated_i) = &self.focus_y_animation { animated_i.value } else { self.get_item_offset_y(i) };
+                let y = menu_origin.y + offset_y;
+                draw_rounded_rectangle(menu_origin.x, y, width, item_height + ITEM_PADDING, 10., highlight_color, graphics);
+                if let Some(sub_menu) = &item.sub_menu {
+                    sub_menu.render(Vector2::new(menu_origin.x + width, y), graphics);
+                } else if let Some(input) = &item.input {
+                    input.render(menu_origin.x + width, y, graphics);
                 }
-            } else if let Some(sub_menu) = &mut item.sub_menu { sub_menu.close_submenu() }
+            }
+        }
+        // Draw text in order to not overlap
+        for (i, item) in self.items.iter().enumerate() {
             graphics.set_clip(Some(
                 Rectangle::new(
                     Vector2::new(menu_origin.x as i32, menu_origin.y as i32),
                     Vector2::new((menu_origin.x + width) as i32, (menu_origin.y + height) as i32)
                 )
             ));
+            if item.action == MenuAction::Separator { continue; }
             graphics.draw_text(
-                menu_origin + Vector2::new(2. * ITEM_PADDING, item_height * (i as f32) + ITEM_PADDING),
+                menu_origin + Vector2::new(2. * ITEM_PADDING, self.get_item_offset_y(i) + ITEM_PADDING),
                 Color::BLACK,
                 &self.formatted_items[i]
             );
