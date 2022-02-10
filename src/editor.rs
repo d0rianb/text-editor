@@ -2,6 +2,7 @@ use std::{cmp, env, fs};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -29,6 +30,7 @@ use crate::line::Line;
 use crate::range::Range;
 use crate::selection::Selection;
 use crate::editable::Editable;
+use crate::stats::Stats;
 
 pub const EDITOR_PADDING: f32 = 10.;
 pub const EDITOR_OFFSET_TOP: f32 = 55.;
@@ -65,6 +67,7 @@ pub struct Editor {
     pub bold_buffer: Vec<Range>,
     pub menu: ContextualMenu,
     pub cached_prefs: Option<Yaml>,
+    pub stats: Stats,
 }
 
 impl Editor {
@@ -91,6 +94,7 @@ impl Editor {
             offset,
             padding,
             font,
+            stats: Stats::default()
         }
     }
 }
@@ -99,6 +103,7 @@ impl Editable for Editor {
     fn add_char(&mut self, c: String) {
         if self.modifiers.logo() {
             let chars: Vec<char> = c.chars().collect();
+            dbg!(&chars);
             return self.shortcut(chars[0]);
         }
         // matching template
@@ -161,7 +166,7 @@ impl Editable for Editor {
             VirtualKeyCode::Down => self.move_cursor_relative(0, 1),
             VirtualKeyCode::Backspace => self.delete_char(),
             VirtualKeyCode::Delete => { self.move_cursor_relative(1, 0); self.delete_char(); },
-            VirtualKeyCode::Return => if self.modifiers.alt() { self.toggle_contextual_menu() } else { self.new_line() },
+            VirtualKeyCode::Return => if self.modifiers.alt() { self.toggle_ai_contextual_menu() } else { self.new_line() },
             VirtualKeyCode::Escape => self.menu.close(),
             VirtualKeyCode::Tab => if self.modifiers.alt() { self.menu.open() },
             _ => { return; },
@@ -350,20 +355,8 @@ impl Editable for Editor {
     fn copy(&mut self) {
         if !self.selection.is_valid() { return; }
         let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
-        let mut buffer = vec![];
-        let lines_index = self.selection.get_lines_index(&self.lines);
-        let initial_y = self.selection.start().unwrap().y;
-        for (i, (start, end)) in lines_index.iter().enumerate() {
-            let y = initial_y as usize + i;
-            let mut text = String::new();
-            for j in *start .. *end {
-                let buffer_text = self.lines[y].buffer.get(j as usize);
-                if let Some(bt) = buffer_text { text.push_str(bt); }
-            }
-            text.push('\n');
-            buffer.push(text);
-        }
-        ctx.set_contents(buffer.join("")).unwrap();
+        let selection_text = self.get_selected_text();
+        ctx.set_contents(selection_text).unwrap();
     }
 
     fn paste(&mut self) {
@@ -444,6 +437,23 @@ impl Editor {
         &mut self.get_current_line().buffer
     }
 
+    fn get_selected_text(&mut self) -> String {
+        let mut buffer = vec![];
+        let lines_index = self.selection.get_lines_index(&self.lines);
+        let initial_y = self.selection.start().unwrap().y;
+        for (i, (start, end)) in lines_index.iter().enumerate() {
+            let y = initial_y as usize + i;
+            let mut text = String::new();
+            for j in *start .. *end {
+                let buffer_text = self.lines[y].buffer.get(j as usize);
+                if let Some(bt) = buffer_text { text.push_str(bt); }
+            }
+            text.push('\n');
+            buffer.push(text);
+        }
+        buffer.join("")
+    }
+
     pub fn new_line(&mut self) {
         self.delete_selection();
         let mut new_line = Line::new(Rc::clone(&self.font));
@@ -520,6 +530,15 @@ impl Editor {
             ] { items.push(i) }
         }
         self.menu.open_with(items);
+    }
+
+    pub fn toggle_ai_contextual_menu(&mut self) {
+        if !self.selection.is_valid() { self.select_current_word(); }
+        let selected_text = self.get_selected_text();
+        self.menu.open_with(vec![
+            MenuItem::new("AI Correct", MenuAction::AICorrect),
+            MenuItem::new("AI Action >", MenuAction::AIQuestionWithInput),
+        ]);
     }
 
     pub fn get_menu(&mut self, id: MenuId) -> &mut ContextualMenu {
@@ -634,11 +653,15 @@ impl Editor {
     fn get_stats(&self) -> Vec<String> {
         let words_count = self.lines.iter().fold(0, |acc, line| acc + line.get_word_count());
         let char_count = self.lines.iter().fold(0, |acc, line| acc + line.buffer.len());
+        let update_duration = self.stats.update_duration.as_micros() as f64 / 1000.;
+        let draw_duration = self.stats.draw_duration.as_micros() as f64 / 1000.;
         vec![
             iformat!("Nombre de mots: {words_count}"),
             iformat!("Nombre de carapaces: {char_count}"),
             iformat!("Nombre de lignes: {self.lines.len()}"),
             iformat!("Position du curseur: ({self.cursor.x}, {self.cursor.y})"),
+            iformat!("Update time: {update_duration:.1}ms"),
+            iformat!("Draw time: {draw_duration:.1}ms"),
         ]
     }
 
@@ -825,6 +848,7 @@ impl Editor {
     }
 
     pub fn update(&mut self, dt: f32) {
+        let start_time = Instant::now();
         let animations = self.get_animations();
         for animation in animations {
             if let Some(anim) = animation {
@@ -835,9 +859,11 @@ impl Editor {
                 if anim.is_ended { *animation = Option::None; }
             }
         }
+        self.stats.update_duration = start_time.elapsed();
     }
 
     pub fn render(&mut self, graphics: &mut Graphics2D) {
+        let start_time = Instant::now();
         let char_width = self.font.borrow().char_width;
         let char_height = self.font.borrow().char_height;
 
@@ -899,5 +925,6 @@ impl Editor {
                 Color::GRAY
             );
         }
+        self.stats.draw_duration = start_time.elapsed();
     }
 }

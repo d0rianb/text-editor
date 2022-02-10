@@ -14,6 +14,7 @@ mod render_helper;
 mod input;
 mod editable;
 mod menu_actions;
+mod stats;
 
 use std::thread;
 use std::env;
@@ -44,7 +45,7 @@ pub enum FocusElement { Editor, Menu(MenuId), MenuInput(MenuId) }
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum EditorEvent {
-    Update, Redraw, Focus(FocusElement), MenuItemSelected(MenuAction), LoadFile(String)
+    Update, Redraw, Focus(FocusElement), MenuItemSelected(MenuAction), MenuItemUnselected(MenuAction, String), LoadFile(String)
 }
 
 struct EditorWindowHandler {
@@ -95,6 +96,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::FindAndJump(text) => self.editor.find(&text),
                 _ => {}
             },
+            EditorEvent::MenuItemUnselected(item, key) => self.editor.add_char(key),
             EditorEvent::LoadFile(path) => set_app_title(helper, &path),
         }
     }
@@ -165,16 +167,23 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         if unicode_codepoint >= ' '  && unicode_codepoint <= '~' || unicode_codepoint >= '¡' {
             match self.focus {
                 FocusElement::Editor => {
-                        self.editor.add_char(unicode_codepoint.to_string());
-                        self.editor.update_text_layout();
-                    }
-
+                    self.editor.add_char(unicode_codepoint.to_string());
+                    self.editor.update_text_layout();
+                }
                 FocusElement::MenuInput(id) => {
                     let input = self.editor.get_menu(id).get_focused_item().input.as_mut().unwrap();
                     input.add_char(unicode_codepoint.to_string());
                     input.update_text_layout();
                 }
-                _ => {}
+                FocusElement::Menu(id) => {
+                    // Cancel chip should disapear on keydown but the char should be added anyway
+                    // Ugly
+                    let menu = self.editor.get_menu(id);
+                    if menu.items[0].action == MenuAction::CancelChip {
+                        self.editor.add_char(unicode_codepoint.to_string());
+                        self.editor.update_text_layout();
+                    }
+                }
             }
             helper.request_redraw();
         }

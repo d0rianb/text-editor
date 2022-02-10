@@ -146,7 +146,7 @@ impl ContextualMenu {
             | VirtualKeyCode::RWin
             | VirtualKeyCode::LAlt
             | VirtualKeyCode::RAlt => {}, // Prevent closing the menu while pressing a modifier
-            _ => self.close()
+            _ => self.close(),
         }
     }
 
@@ -212,7 +212,6 @@ impl ContextualMenu {
     }
 
     pub fn get_focused_item(&mut self) -> &mut MenuItem {
-        assert!(self.is_focus());
         &mut self.items[self.focus_index as usize]
     }
 

@@ -24,7 +24,10 @@ pub enum MenuAction {
     NewFile(String),
     NewFileWithInput(String),
     FindAndJumpWithInput,
-    FindAndJump(String)
+    FindAndJump(String),
+    AICorrect,
+    AIQuestion(String),
+    AIQuestionWithInput,
 }
 
 impl fmt::Display for MenuAction {
@@ -39,6 +42,7 @@ impl MenuAction {
             MenuAction::PrintWithInput => MenuAction::Print,
             MenuAction::NewFileWithInput(_) => MenuAction::NewFile,
             MenuAction::FindAndJumpWithInput => MenuAction::FindAndJump,
+            MenuAction::AIQuestionWithInput => MenuAction::AIQuestion,
             _ => MenuAction::Print
         }
     }

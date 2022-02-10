@@ -24,6 +24,7 @@ pub const MAX_INPUT_WIDTH: f32 = 500.;
 const ANIMATION_DURATION: f32 = 100.;
 
 #[allow(unused)]
+#[derive(PartialEq)]
 pub enum Validator {
     File,
     Path,
@@ -73,7 +74,7 @@ impl Editable for Input {
     fn move_cursor_relative(&mut self, rel_x: i32, _rel_y: i32) {
         if self.editor.cursor.x as i32 + rel_x < 0 { return self.unfocus(); }
         let line = &mut self.editor.lines[0];
-        if self.editor.cursor.x >= line.buffer.len() as u32 && rel_x > 0 {
+        if self.editor.cursor.x >= line.buffer.len() as u32 && rel_x > 0 && self.validator != Validator::None {
             line.add_text(&self.suggestion);
             self.editor.move_cursor_relative(self.suggestion.len() as i32, 0);
             return;

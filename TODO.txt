@@ -3,3 +3,5 @@
  - cmd-Z
  - find/replace
  - write tests
+ - debounce ())
+ - incremente suggestion in autofill
