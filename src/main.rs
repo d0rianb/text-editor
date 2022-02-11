@@ -96,7 +96,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::FindAndJump(text) => self.editor.find(&text),
                 _ => {}
             },
-            EditorEvent::MenuItemUnselected(item, key) => self.editor.add_char(key),
+            EditorEvent::MenuItemUnselected(_item, key) => self.editor.add_char(key),
             EditorEvent::LoadFile(path) => set_app_title(helper, &path),
         }
     }

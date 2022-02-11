@@ -1,5 +1,6 @@
 use std::{cmp, env, fs};
 use std::cell::RefCell;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::rc::Rc;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -17,8 +18,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use ifmt::{iformat, iprintln};
 
-extern crate yaml_rust;
-use yaml_rust::{Yaml, YamlLoader};
+use serde_yaml;
 
 use crate::cursor::{Cursor, CURSOR_OFFSET_X};
 use crate::camera::Camera;
@@ -66,7 +66,7 @@ pub struct Editor {
     pub underline_buffer: Vec<Range>,
     pub bold_buffer: Vec<Range>,
     pub menu: ContextualMenu,
-    pub cached_prefs: Option<Yaml>,
+    pub cached_prefs: Option<serde_yaml::Value>,
     pub stats: Stats,
 }
 
@@ -676,23 +676,36 @@ impl Editor {
         self.send_event(EditorEvent::Focus(FocusElement::Editor));
     }
 
-    fn get_prefs_key(&mut self, key: &str) -> Yaml {
+    fn get_prefs_key(&mut self, key: &str) -> serde_yaml::Value {
         if let Some(prefs) = &self.cached_prefs {
-            prefs[key].clone()
+            prefs.get(key).unwrap().to_owned()
         } else {
             let prefs_path = get_file_path("./resources/prefs.yaml");
             let prefs_str = fs::read_to_string(prefs_path).expect("Can't find the preference file");
-            let docs: Vec<Yaml> = YamlLoader::load_from_str(&prefs_str).expect("Invalid preferences");
-            let prefs: &Yaml = docs.get(0).unwrap();
+            let prefs: serde_yaml::Value = serde_yaml::from_str(&prefs_str).expect("Invalid preferences");
             self.cached_prefs = Some(prefs.clone());
-            prefs[key].clone()
+            prefs.get(key).unwrap().to_owned()
         }
     }
 
+    fn set_prefs_key(&mut self, key: &str, value: serde_yaml::Value) {
+        let mut prefs = if let Some(prefs) = &self.cached_prefs { prefs.to_owned() } else {
+            let prefs_path = get_file_path("./resources/prefs.yaml");
+            let prefs_str = fs::read_to_string(prefs_path).expect("Can't find the preference file");
+            let prefs: serde_yaml::Value = serde_yaml::from_str(&prefs_str).expect("Invalid preferences");
+            prefs
+        };
+        *prefs.get_mut(key).unwrap() = value.into();
+        let mut buffer = Vec::new();
+        serde_yaml::to_writer(&mut buffer, &prefs).unwrap();
+        fs::write(get_file_path("./resources/prefs.yaml"), buffer).expect("Unable to write to the preference file");
+        self.cached_prefs = Option::None;
+    }
+
     fn get_recent_files(&mut self) -> Vec<(String, String)> {
-        lazy_static! { static ref NAME_REGEX: Regex = Regex::new(r"([a-zA-Z0-9_-]+).(\w+)$").unwrap(); }
+        lazy_static! { static ref NAME_REGEX: Regex = Regex::new(r#"([\w\s_-]+).(\w+)$"#).unwrap(); }
         let files_yaml = self.get_prefs_key("recent_files");
-        let files: Vec<&str> = files_yaml.as_vec().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
+        let files: Vec<&str> = files_yaml.as_sequence().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
         let files_with_names: Vec<(String, String)> = files.iter().map(|f| {
             let file_name: String = NAME_REGEX.captures(*f).unwrap().get(0).unwrap().as_str().to_string();
             (file_name, String::from(*f))
@@ -703,12 +716,42 @@ impl Editor {
     fn get_recent_paths(&mut self) -> Vec<(String, String)> {
         lazy_static! { static ref NAME_REGEX: Regex = Regex::new(r"(\w+)/?$").unwrap(); }
         let folder_yaml = self.get_prefs_key("recent_folders");
-        let folder: Vec<&str> = folder_yaml.as_vec().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
+        let folder: Vec<&str> = folder_yaml.as_sequence().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
         let folder_with_names: Vec<(String, String)> = folder.iter().map(|f| {
             let file_name: String = NAME_REGEX.captures(*f).unwrap().get(0).unwrap().as_str().to_string() + "/";
             (file_name, String::from(*f) + "/")
         }).collect();
         folder_with_names
+    }
+
+    fn add_to_recent_files(&mut self, filepath: &str) {
+        const MAX_ELEMENT: usize = 3;
+        let recent_files = self.get_recent_files();
+        let mut existing_filepaths: Vec<&str> = recent_files.iter().map(|(_name, path)| path.as_str()).collect();
+        if let Some(index) = &existing_filepaths.iter().position(|f| f == &filepath) { existing_filepaths.remove(*index); }
+        existing_filepaths.insert(0, filepath);
+        existing_filepaths.truncate(MAX_ELEMENT);
+        let yaml_array = serde_yaml::Value::Sequence(existing_filepaths.iter().map(|f| serde_yaml::Value::String((*f).to_string())).collect());
+        self.set_prefs_key("recent_files", yaml_array);
+    }
+
+    fn add_to_recent_paths(&mut self, filepath: &str) {
+        lazy_static! {
+            static ref NAME_REGEX: Regex = Regex::new(r"(\w+)/?$").unwrap();
+        }
+        const MAX_ELEMENT: usize = 5;
+        let path = Path::new(filepath).parent().unwrap().as_os_str().to_str().unwrap().to_string() + "/";
+        let recent_paths = self.get_recent_paths();
+        let mut existing_paths: Vec<&String> = recent_paths.iter().map(|(_name, path)| path).collect();
+        if let Some(index) = &existing_paths.iter().position(|f| *f == &path) { existing_paths.remove(*index); }
+        existing_paths.insert(0, &path);
+        existing_paths.truncate(MAX_ELEMENT);
+        let yaml_array = serde_yaml::Value::Sequence(existing_paths.iter().map(|f| {
+            let mut name = (*f).to_owned();
+            if name.ends_with('/') { name.pop(); }
+            serde_yaml::Value::String(name)
+        }).collect());
+        self.set_prefs_key("recent_folders", yaml_array);
     }
 
     fn new_file_popup(&mut self) {
@@ -819,6 +862,10 @@ impl Editor {
         }
         self.cursor.move_to(0, 0);
         self.update_text_layout();
+        if filepath != "new-file.txt" {
+            self.add_to_recent_paths(filepath);
+            self.add_to_recent_files(filepath);
+        }
         self.send_event(EditorEvent::LoadFile(filepath.into()))
     }
 
