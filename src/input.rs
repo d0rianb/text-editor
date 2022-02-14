@@ -18,8 +18,8 @@ use crate::animation::EasingFunction;
 use crate::camera::Camera;
 use crate::render_helper::draw_rounded_rectangle_with_border;
 
-pub const MIN_INPUT_WIDTH: f32 = 200.;
-pub const MAX_INPUT_WIDTH: f32 = 500.;
+pub const MIN_INPUT_WIDTH: f32 = 250.;
+pub const MAX_INPUT_WIDTH: f32 = 600.;
 
 const ANIMATION_DURATION: f32 = 100.;
 
@@ -122,12 +122,12 @@ impl Editable for Input {
 
 impl Input {
     pub fn new(menu_id: MenuId, action_fn: MenuActionFn, es: UserEventSender<EditorEvent>) -> Self {
-        let mut editor = Editor::new(MIN_INPUT_WIDTH, 50., Vector2::ZERO, 10.); // arbitrary
+        let mut editor = Editor::new(MIN_INPUT_WIDTH, 55., Vector2::ZERO, 15.); // arbitrary height
         editor.font.borrow_mut().change_font_size(-6); // Set font size to 10
-        let offset = Vector2::new(0., (50. - editor.font.borrow().char_height) / 2. - 10.);
+        let offset = Vector2::new(0., (50. - editor.font.borrow().char_height) / 2. - 15.);
         editor.set_offset(offset);
         editor.set_event_sender(Some(es));
-        editor.camera.safe_zone_size = 0.;
+        editor.camera.safe_zone_size = 30.;
         let blank_text_layout = editor.lines[0].formatted_text_block.clone();
         Self {
             editor,

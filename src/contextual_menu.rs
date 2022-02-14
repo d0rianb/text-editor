@@ -382,9 +382,10 @@ impl ContextualMenu {
         for (i, item) in self.items.iter().enumerate() {
             let y = menu_origin.y + self.get_item_offset_y(i);
             if item.action == MenuAction::Separator {
-                // Handle separators
+                // draw separators
                 const SEPARATOR_HEIGHT: f32 = 1.;
-                draw_rectangle(menu_origin.x + ITEM_PADDING * 3., y + item_height * SEPARATOR_HEIGHT_RATIO / 2. - SEPARATOR_HEIGHT / 2. + ITEM_PADDING / 2., width - ITEM_PADDING * 6., SEPARATOR_HEIGHT, *SEPARATOR_COLOR, graphics);
+                const SEPARATOR_PADDING_X: f32 = ITEM_PADDING * 1.5;
+                draw_rectangle(menu_origin.x + SEPARATOR_PADDING_X, y + item_height * SEPARATOR_HEIGHT_RATIO / 2. - SEPARATOR_HEIGHT / 2. + ITEM_PADDING / 2., width - SEPARATOR_PADDING_X*2., SEPARATOR_HEIGHT, *SEPARATOR_COLOR, graphics);
                 continue;
             }
             // draw highlight

@@ -833,7 +833,10 @@ impl Editor {
             path_items.push(MenuItem::new(&name, MenuAction::OpenWithInput(path)));
         }
         let path_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
-        let mut menu_items = vec![MenuItem::new_with_submenu("Open ...", path_submenu), MenuItem::separator()];
+        let mut menu_items = vec![
+            MenuItem::new_with_submenu("Open ...", path_submenu),
+            MenuItem::separator()
+        ];
         for (name, path) in self.get_recent_files() {
             menu_items.push(MenuItem::new(&name, MenuAction::Open(path)));
         }
