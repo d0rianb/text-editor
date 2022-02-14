@@ -15,6 +15,7 @@ mod input;
 mod editable;
 mod menu_actions;
 mod stats;
+mod open_ai_wrapper;
 
 use std::thread;
 use std::env;
@@ -34,6 +35,7 @@ use crate::animation::Animation;
 use crate::editable::Editable;
 use crate::editor::{EDITOR_OFFSET_TOP, EDITOR_PADDING};
 use crate::menu_actions::MenuAction;
+use crate::open_ai_wrapper::OpenAIWrapper;
 
 const FPS: u64 = 60;
 const FRAME_DURATION: u64 = 1000 / FPS; // ms
@@ -94,6 +96,8 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::OpenSubMenu => {},
                 MenuAction::CloseMenu => self.editor.menu.close(),
                 MenuAction::FindAndJump(text) => self.editor.find(&text),
+                // MenuAction::AICorrect => OpenAIWrapper::correct( &self.editor.get_selected_text()).await,
+                // MenuAction::AIQuestion(question) => OpenAIWrapper::ask(&question.replace('$', &self.editor.get_selected_text())).await,
                 _ => {}
             },
             EditorEvent::MenuItemUnselected(_item, key) => self.editor.add_char(key),

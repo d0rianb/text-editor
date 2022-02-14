@@ -47,4 +47,12 @@ impl MenuAction {
             _ => MenuAction::Print
         }
     }
+
+    pub fn is_async(action: &MenuAction) -> bool {
+        match action {
+            MenuAction::AIQuestion(_) => true,
+            MenuAction::AICorrect => true,
+            _ => false
+        }
+    }
 }

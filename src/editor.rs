@@ -265,12 +265,12 @@ impl Editable for Editor {
             'D' => self.duplicate_line(),
             '+' | '=' => self.increase_font_size(),
             '-' => self.decrease_font_size(),
-            // 'n' => self.contextual_submenu_test(),
             'n' => self.new_file_popup(),
             'N' => self.new_file("new-file.txt"),
             'i' => self.toggle_stats_popup(),
             'r' => self.find_next(),
             'p' => self.print_dir(),
+            'P' => self.toggle_ai_contextual_menu(),
             _ => {}
         }
     }
@@ -437,7 +437,7 @@ impl Editor {
         &mut self.get_current_line().buffer
     }
 
-    fn get_selected_text(&mut self) -> String {
+    pub fn get_selected_text(&mut self) -> String {
         let mut buffer = vec![];
         let lines_index = self.selection.get_lines_index(&self.lines);
         let initial_y = self.selection.start().unwrap().y;
@@ -535,7 +535,6 @@ impl Editor {
 
     pub fn toggle_ai_contextual_menu(&mut self) {
         if !self.selection.is_valid() { self.select_current_word(); }
-        let selected_text = self.get_selected_text();
         self.menu.open_with(vec![
             MenuItem::new("AI Correct", MenuAction::AICorrect),
             MenuItem::new("AI Action >", MenuAction::AIQuestionWithInput),
@@ -543,16 +542,13 @@ impl Editor {
     }
 
     pub fn get_menu(&mut self, id: MenuId) -> &mut ContextualMenu {
-        // (0, -1, -1, -1)
-        // let mut menu = &mut self.menu;
-        // for level in id.iter() {
-        //     if *level <= -1 { break; }
-        //     let mut menu_item = menu.items.get_mut(*level as usize);
-        //     if let Some(item) = menu_item {
-        //         if let Some(sub_menu) = &mut item.sub_menu { menu = sub_menu } else { break; }
-        //     } else { break; }
-        // }
-        if id[0] <= -1 { &mut self.menu } else { self.menu.items[id[0] as usize].sub_menu.as_mut().unwrap() }
+        // MenuId example: (0, -1, -1, -1) | (1, 0, -1, -1)
+        let mut menu = &mut self.menu;
+        for level in id.iter() {
+            if *level <= -1 || *level as usize >= menu.items.len() { break; }
+            menu  = menu.items[*level as usize].sub_menu.as_mut().unwrap();
+        }
+        menu
     }
 
     fn _contextual_submenu_test(&mut self) {
