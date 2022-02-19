@@ -1,4 +1,5 @@
 use std::fmt;
+use crate::MenuId;
 
 pub(crate) type MenuActionFn = fn(String) -> MenuAction;
 
@@ -29,6 +30,7 @@ pub enum MenuAction {
     AICorrect,
     AIQuestion(String),
     AIQuestionWithInput,
+    ToggleLoader(MenuId),
 }
 
 impl fmt::Display for MenuAction {

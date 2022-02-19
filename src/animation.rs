@@ -6,6 +6,9 @@ use crate::EditorEvent;
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum EasingFunction {
     Linear,
+    Square,
+    Cubic,
+    BiCubic,
     SmoothStep,
     SmootherStep,
     EaseIn,
@@ -18,6 +21,9 @@ pub enum EasingFunction {
 fn get_easing_fn(f: EasingFunction) -> Box<dyn Fn(f32) -> f32 + 'static> {
     let function = match f {
         EasingFunction::Linear => |t: f32| t,
+        EasingFunction::Square => |t: f32| t.powi(2),
+        EasingFunction::Cubic => |t: f32| t.powi(3),
+        EasingFunction::BiCubic => |t: f32| t.powi(4),
         EasingFunction::SmoothStep => |t: f32| (3. - 2. * t) * t.powi(2),
         EasingFunction::SmootherStep => |t: f32| (6. * t * t - 15. * t + 10.) * t.powi(3),
         EasingFunction::EaseIn => |t: f32| t.powi(2),
@@ -42,6 +48,7 @@ pub struct Animation {
     pub has_started: bool,
     pub is_paused: bool,
     pub is_ended: bool,
+    pub infinite: bool,
     is_reversed: bool,
     speed: f32,
     pub last_t: f32,
@@ -56,7 +63,7 @@ impl Clone for Animation {
 }
 
 impl Animation {
-    pub fn new(from: f32, to: f32, duration: f32, easing: EasingFunction, es: UserEventSender<EditorEvent> ) -> Self {
+    pub fn new(from: f32, to: f32, duration: f32, easing: EasingFunction, es: UserEventSender<EditorEvent>) -> Self {
         Self {
             from,
             to,
@@ -67,11 +74,18 @@ impl Animation {
             has_started: false,
             is_paused: false,
             is_ended: from == to,
+            infinite: false,
             is_reversed: false,
             speed: (to - from).abs() as f32 / duration,
             last_t: 0.,
             event_sender: es,
         }
+    }
+
+    pub fn new_infinite(from: f32, to: f32, duration: f32, easing: EasingFunction, es: UserEventSender<EditorEvent>) -> Self {
+        let mut animation = Self::new(from, to, duration, easing, es);
+        animation.infinite = true;
+        animation
     }
 
     #[inline]
@@ -133,7 +147,11 @@ impl Animation {
         self.has_started && !(self.is_ended || self.is_paused)
     }
 
-    pub fn on_finish(&self) {
+    pub fn on_finish(&mut self) {
+        if self.infinite {
+            self.last_t = 0.;
+            self.is_ended = false;
+        }
         self.event_sender.send_event(EditorEvent::Redraw).unwrap();
     }
 }

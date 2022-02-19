@@ -5,3 +5,4 @@ flamegraph.svg
 output.txt
 new_file.txt
 *.trace
+resources/tokens.yaml

@@ -16,6 +16,7 @@ use crate::{Animation, Editable, Editor, EditorEvent, FocusElement, MenuId};
 use crate::menu_actions::{MenuAction, MenuActionFn};
 use crate::animation::EasingFunction;
 use crate::camera::Camera;
+use crate::FocusElement::Menu;
 use crate::render_helper::draw_rounded_rectangle_with_border;
 
 pub const MIN_INPUT_WIDTH: f32 = 250.;
@@ -211,6 +212,7 @@ impl Input {
             static ref PATH_REGEX: Regex = Regex::new(r"^.*/").unwrap();
             static ref LAST_WORD_REGEX: Regex = Regex::new(r#"/([\w.\-\\\\ ]*)$"#).unwrap();
         }
+        if self.validator == Validator::None { return; }
         let input = self.editor.lines[0].get_text();
         let path_groups = PATH_REGEX.captures(&input);
         let last_word_groups = LAST_WORD_REGEX.captures(&input);
@@ -262,13 +264,21 @@ impl Input {
             self.has_error = true;
             return;
         }
+        let action = (self.action_fn)(result);
         self.editor.event_sender.as_ref().unwrap().send_event(
-            EditorEvent::MenuItemSelected((self.action_fn)(result))
+            EditorEvent::MenuItemSelected(action.clone())
         ).unwrap();
         self.unfocus();
-        self.editor.event_sender.as_ref().unwrap().send_event(
-            EditorEvent::MenuItemSelected(MenuAction::CloseMenu)
-        ).unwrap();
+        if MenuAction::is_async(&action) {
+            self.editor.event_sender.as_ref().unwrap().send_event(
+                EditorEvent::MenuItemSelected(MenuAction::ToggleLoader(self.menu_id))
+            ).unwrap();
+        } else {
+            self.editor.event_sender.as_ref().unwrap().send_event(
+                EditorEvent::MenuItemSelected(MenuAction::CloseMenu)
+            ).unwrap();
+
+        }
     }
 
     fn computed_width(&self) -> f32 {

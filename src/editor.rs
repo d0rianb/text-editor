@@ -166,7 +166,7 @@ impl Editable for Editor {
             VirtualKeyCode::Down => self.move_cursor_relative(0, 1),
             VirtualKeyCode::Backspace => self.delete_char(),
             VirtualKeyCode::Delete => { self.move_cursor_relative(1, 0); self.delete_char(); },
-            VirtualKeyCode::Return => if self.modifiers.alt() { self.toggle_contextual_menu() } else { self.new_line() },
+            VirtualKeyCode::Return => if self.modifiers.alt() { self.toggle_ai_contextual_menu() } else { self.new_line() },
             VirtualKeyCode::Escape => self.menu.close(),
             VirtualKeyCode::Tab => if self.modifiers.alt() { self.menu.open() },
             _ => { return; },
@@ -438,6 +438,7 @@ impl Editor {
     }
 
     pub fn get_selected_text(&mut self) -> String {
+        if !self.selection.is_valid() { return String::new() }
         let mut buffer = vec![];
         let lines_index = self.selection.get_lines_index(&self.lines);
         let initial_y = self.selection.start().unwrap().y;
@@ -565,7 +566,8 @@ impl Editor {
                 title: "Menu 2 >".to_string(),
                 action: MenuAction::OpenSubMenu,
                 sub_menu: Some(sub_menu),
-                input: Option::None
+                input: Option::None,
+                loader: None
             }
         ]);
     }

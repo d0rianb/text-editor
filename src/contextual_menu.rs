@@ -15,6 +15,7 @@ use crate::menu_actions::MenuAction;
 use crate::animation::{Animation, EasingFunction};
 use crate::font::Font;
 use crate::input::{Input, Validator};
+use crate::loader::Loader;
 use crate::render_helper::{draw_rectangle, draw_rounded_rectangle, draw_rounded_rectangle_with_border};
 
 const ITEM_PADDING: f32 = 5.;
@@ -25,7 +26,8 @@ pub struct MenuItem {
     pub title: String,
     pub action: MenuAction,
     pub sub_menu: Option<ContextualMenu>,
-    pub input: Option<Input>
+    pub input: Option<Input>,
+    pub loader: Option<Loader>
 }
 
 impl Debug for MenuItem {
@@ -47,6 +49,7 @@ impl MenuItem {
             action,
             sub_menu: Option::None,
             input: Option::None,
+            loader: Option::None
         }
     }
 
@@ -56,6 +59,7 @@ impl MenuItem {
             action: MenuAction::OpenSubMenu,
             sub_menu: Some(sub_menu),
             input: Option::None,
+            loader: Option::None
         }
     }
 
@@ -65,9 +69,16 @@ impl MenuItem {
             action: MenuAction::Separator,
             sub_menu: Option::None,
             input: Option::None,
+            loader: Option::None
         }
     }
 
+    pub fn start_loader(&mut self, es: UserEventSender<EditorEvent>) {
+        if self.loader.is_some() { return; }
+        self.loader = Some(Loader::new(es))
+    }
+
+    pub fn stop_loader(&mut self) { self.loader = None }
 }
 
 pub struct ContextualMenu {
@@ -221,16 +232,21 @@ impl ContextualMenu {
 
     pub fn get_animations(&mut self) -> Vec<&mut Option<Animation>> {
         let mut animations = vec![&mut self.size_animation.x, &mut self.size_animation.y, &mut self.focus_y_animation];
-        for items in self.items.iter_mut() {
-            if let Some(input) = &mut items.input {
+        for item in self.items.iter_mut() {
+            if let Some(input) = &mut item.input {
                 for animation in input.get_animations() {
                     animations.push(animation)
                 }
             }
-            if let Some(sub_menu) = &mut items.sub_menu {
+            if let Some(sub_menu) = &mut item.sub_menu {
                for animation in sub_menu.get_animations() {
                    animations.push(animation);
                }
+            }
+            if let Some(loader) = &mut item.loader {
+                for animation in loader.get_animations() {
+                    animations.push(animation);
+                }
             }
         }
         animations
@@ -268,16 +284,33 @@ impl ContextualMenu {
         }
     }
 
+    pub fn toggle_loader(&mut self) {
+        let es = self.event_sender.clone().unwrap();
+        let mut item = self.get_focused_item();
+        match item.loader {
+            None => item.start_loader(es),
+            Some(_) => {}
+        }
+    }
+
     pub fn select(&mut self) {
         if !self.is_focus() { return; }
-        let action = self.get_focused_item().action.clone();
-        self.event_sender.as_ref().unwrap().send_event(EditorEvent::MenuItemSelected(action.clone())).unwrap();
+        let es = self.event_sender.as_ref().unwrap().clone();
+        let item =  self.get_focused_item();
+        let action = item.action.clone();
+        es.send_event(EditorEvent::MenuItemSelected(action.clone())).unwrap();
+        if MenuAction::is_async(&action) {
+            item.start_loader(es.clone());
+            es.send_event(EditorEvent::Redraw).unwrap();
+            return;
+        }
         match action {
             MenuAction::OpenSubMenu => self.focus_submenu(),
             MenuAction::Void => {},
             _ => self.close()
         }
     }
+
 
     fn define_id(&mut self) {
         let id = self.id;
@@ -370,10 +403,10 @@ impl ContextualMenu {
         let editor_size = self.system_font.borrow().editor_size;
         if menu_origin.x + width > editor_size.x { menu_origin.x -= menu_origin.x + width - editor_size.x }
         if menu_origin.y + height > editor_size.y { menu_origin.y -= menu_origin.y + height - editor_size.y }
-        let highlight_color: Color = Color::from_int_rgba(225, 225, 225, 255);
         const BORDER_WIDTH: f32 = 0.5;
         lazy_static! {
             static ref BG_COLOR: Color = Color::from_int_rgb(250, 250, 250);
+            static ref HIGHLIGHT_BG_COLOR: Color = Color::from_int_rgba(225, 225, 225, 255);
             static ref BORDER_COLOR: Color = Color::from_int_rgb(150, 150, 150);
             static ref SEPARATOR_COLOR: Color = Color::from_int_rgb(200, 200, 200);
         }
@@ -392,12 +425,18 @@ impl ContextualMenu {
             if i == self.focus_index as usize && item.action != MenuAction::Information {
                 let offset_y = if let Some(animated_i) = &self.focus_y_animation { animated_i.value } else { self.get_item_offset_y(i) };
                 let y = menu_origin.y + offset_y;
-                draw_rounded_rectangle(menu_origin.x, y, width, item_height + ITEM_PADDING, 10., highlight_color, graphics);
+                draw_rounded_rectangle(menu_origin.x, y, width, item_height + ITEM_PADDING, 10., *HIGHLIGHT_BG_COLOR, graphics);
                 if let Some(sub_menu) = &item.sub_menu {
                     sub_menu.render(Vector2::new(menu_origin.x + width, y), graphics);
                 } else if let Some(input) = &item.input {
                     input.render(menu_origin.x + width, y, graphics);
                 }
+            }
+            if let Some(loader) = &item.loader {
+                const OFFSET: f32 = 7.;
+                let radius = item_height / 2. - OFFSET;
+                let bg_color = if i as isize == self.focus_index { &HIGHLIGHT_BG_COLOR as &Color } else { &BG_COLOR as &Color };
+                loader.draw(menu_origin.x + width - radius - OFFSET, y + (item_height + OFFSET) / 2., radius, bg_color, graphics);
             }
         }
         // Draw text in order to not overlap

@@ -16,6 +16,7 @@ mod editable;
 mod menu_actions;
 mod stats;
 mod open_ai_wrapper;
+mod loader;
 
 use std::thread;
 use std::env;
@@ -96,8 +97,9 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::OpenSubMenu => {},
                 MenuAction::CloseMenu => self.editor.menu.close(),
                 MenuAction::FindAndJump(text) => self.editor.find(&text),
-                // MenuAction::AICorrect => OpenAIWrapper::correct( &self.editor.get_selected_text()).await,
-                // MenuAction::AIQuestion(question) => OpenAIWrapper::ask(&question.replace('$', &self.editor.get_selected_text())).await,
+                MenuAction::AICorrect => OpenAIWrapper::correct(&self.editor.get_selected_text()),
+                MenuAction::AIQuestion(question) => OpenAIWrapper::ask(&question.replace('$', &self.editor.get_selected_text())),
+                MenuAction::ToggleLoader(id) => self.editor.get_menu(id).toggle_loader(),
                 _ => {}
             },
             EditorEvent::MenuItemUnselected(_item, key) => self.editor.add_char(key),
