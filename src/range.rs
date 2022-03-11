@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::cmp;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
+use std::slice::Split;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -101,6 +102,13 @@ impl Range {
         self.start.is_some() && self.end.is_some() && self.start != self.end
     }
 
+    pub fn get_id(&self) -> String {
+        if !self.is_valid() { return "Invalid range".to_string() }
+        let start = self.start.unwrap();
+        let end = self.end.unwrap();
+        format!("{}-{}-{}-{}", start.x, start.y, end.x, end.y)
+    }
+
     pub fn get_real_start(&self) -> Option<Vector2<u32>> {
         if !self.is_valid() { return Option::None; }
         Some(vector_min(self.start.unwrap(), self.end.unwrap()))
@@ -109,6 +117,28 @@ impl Range {
     pub fn get_real_end(&self) -> Option<Vector2<u32>> {
         if !self.is_valid() { return Option::None; }
         Some(vector_max(self.start.unwrap(), self.end.unwrap()))
+    }
+
+    pub fn get_ranges_from_drn_line(pattern: &str, lines: &Vec<&str>) -> Vec<Range> {
+        let mut result = vec![];
+        let mut line = lines
+            .iter()
+            .find(|line| (**line).starts_with(pattern))
+            .unwrap_or(&" ")
+            .to_string();
+        line = line.replace(pattern, "");
+        for range_str in line.split(",") {
+            if range_str == line { break; }
+            let numbers: Vec<&str> = range_str.trim().split("-").collect();
+            let mut parsed_number = numbers
+                .iter()
+                .map(|n| n.parse::<u32>());
+            if parsed_number.clone().any(|n| n.is_err()) { continue }
+            let coords: Vec<u32> = parsed_number.map(|n| n.unwrap()).collect();
+            dbg!(&coords);
+            result.push(Range::new(Vector2::new(coords[0], coords[1]),  Vector2::new(coords[2], coords[3])))
+        }
+        result
     }
 
     pub fn get_lines_index(&mut self, lines: &[Line]) -> Vec<(u32, u32)> {

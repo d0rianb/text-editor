@@ -1,6 +1,7 @@
 use std::{cmp, env, fs};
 use std::cell::RefCell;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::ops::Add;
 use std::rc::Rc;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -103,7 +104,6 @@ impl Editable for Editor {
     fn add_char(&mut self, c: String) {
         if self.modifiers.logo() {
             let chars: Vec<char> = c.chars().collect();
-            dbg!(&chars);
             return self.shortcut(chars[0]);
         }
         // matching template
@@ -477,7 +477,7 @@ impl Editor {
         let text = line_before_buffer.join("");
         let nb_whitespace = text.len() - text.trim_start().len();
         if text.trim_start().starts_with('-') &&  text.trim().len() > 1 {
-            let new_text = " ".repeat(nb_whitespace) + "- ";
+            let new_text = " ".repeat(nb_whitespace) + "- "; // TODO: Aadapt the number of spaces after the dash
             last_line.add_text(&new_text);
             self.move_cursor(Vector2::new(nb_whitespace as u32 + 2, self.cursor.y + 1));
             self.menu.open_with(vec![MenuItem::new("Annuler", MenuAction::CancelChip) ]);
@@ -513,10 +513,17 @@ impl Editor {
         self.move_cursor(Vector2::new(self.cursor.x, (self.cursor.y as i32 + dir) as u32))
     }
 
+    pub fn add_text(&mut self, text: &str) {
+        for c in text.chars() {
+            self.add_char(c.to_string());
+        }
+    }
+
     pub fn cancel_chip(&mut self) {
         self.get_current_line().empty();
-        self.update_text_layout();
         self.cursor.move_to(0, self.cursor.y);
+        self.new_line(); // Move the cursor to the new created line
+        self.update_text_layout();
     }
 
     pub fn toggle_contextual_menu(&mut self) {
@@ -530,6 +537,8 @@ impl Editor {
                 MenuItem::new("Bold", MenuAction::Bold),
                 MenuItem::new("Underline", MenuAction::Underline),
             ] { items.push(i) }
+        } else {
+            return self.toggle_save_popup();
         }
         self.menu.open_with(items);
     }
@@ -543,13 +552,43 @@ impl Editor {
     }
 
     pub fn get_menu(&mut self, id: MenuId) -> &mut ContextualMenu {
-        // MenuId example: (0, -1, -1, -1) | (1, 0, -1, -1)
+        // MenuId example: (0, -1, -1, -1) | (1, 3, -1, -1)
         let mut menu = &mut self.menu;
         for level in id.iter() {
             if *level <= -1 || *level as usize >= menu.items.len() { break; }
             menu  = menu.items[*level as usize].sub_menu.as_mut().unwrap();
         }
         menu
+    }
+
+    fn get_focus_menu_id(&mut self) -> Option<MenuId> {
+        if !self.menu.is_focus() { return Option::None }
+        let mut id = self.menu.id;
+        let mut last_menu_focused = false;
+        'menus: while !last_menu_focused {
+            let menu = self.get_menu(id);
+            let mut items_submenu =  menu.items.iter().map(|i| i.sub_menu.as_ref()).clone();
+            'items: for (i, sub_menu) in items_submenu.enumerate() {
+                if let Some(sub_menu) = sub_menu {
+                    if sub_menu.is_focus() {
+                        let item = &menu.items[i];
+                        id = item.sub_menu.as_ref().unwrap().id;
+                        continue 'menus;
+                    }
+                }
+            }
+            last_menu_focused = true
+        }
+        Some(id)
+    }
+
+    pub fn get_focus_menu(&mut self) -> Option<&mut ContextualMenu> {
+        let menu_id = self.get_focus_menu_id();
+        return if let Some(id) = &menu_id {
+            Some(self.get_menu(*id))
+        } else {
+            None
+        }
     }
 
     fn _contextual_submenu_test(&mut self) {
@@ -656,7 +695,7 @@ impl Editor {
         let draw_duration = self.stats.draw_duration.as_micros() as f64 / 1000.;
         vec![
             iformat!("Nombre de mots: {words_count}"),
-            iformat!("Nombre de carapaces: {char_count}"),
+            iformat!("Nombre de caractères: {char_count}"),
             iformat!("Nombre de lignes: {self.lines.len()}"),
             iformat!("Position du curseur: ({self.cursor.x}, {self.cursor.y})"),
             iformat!("---"),
@@ -789,7 +828,8 @@ impl Editor {
     pub fn save(&mut self) {
         if let Some(f) = self.filepath.clone() {
             if &f == "new-file.txt" { return self.toggle_save_popup(); }
-            self.save_to_file(&f);
+            if f.ends_with(".txt") { self.save_to_file(&f); }
+            else if f.ends_with(".drn") { self.save_to_drn_file(&f); }
         } else {
             self.toggle_save_popup()
         }
@@ -801,19 +841,28 @@ impl Editor {
             path_items.push(MenuItem::new(&name, MenuAction::SaveWithInput(path)));
         }
         let path_submenu = ContextualMenu::new_with_items(self.system_font.clone(), self.event_sender.clone().unwrap(), path_items);
-        let mut file_items = vec![MenuItem::new_with_submenu("Save to >", path_submenu)];
+        let mut file_items = vec![MenuItem::new_with_submenu("Save to >", path_submenu), MenuItem::separator()];
         for (name, path) in self.get_recent_files() {
             file_items.push(MenuItem::new(&name, MenuAction::Save(path)));
         }
         self.menu.open_with(file_items);
     }
 
-    /// Save to a specific file
-    pub fn save_to_file(&mut self, filepath: &str) {
+    fn get_valid_path_or_create_it(&self, filepath: &str) -> PathBuf {
         let path = Path::new(filepath);
         if let Some(prefix) = path.parent() { fs::create_dir_all(prefix).unwrap(); }
         if !path.is_file() { fs::File::create(path).unwrap(); }
-        let valid_filepath = fs::canonicalize(path).expect("Invalid filepath");
+        fs::canonicalize(path).expect("Invalid filepath")
+    }
+
+    /// Save to a specific file
+    pub fn save_to_file(&mut self, filepath: &str) {
+        if filepath.ends_with(".txt") { self.save_to_txt_file(filepath) }
+        else if filepath.ends_with(".drn") { self.save_to_drn_file(filepath) }
+    }
+
+    pub fn save_to_txt_file(&mut self, filepath: &str) {
+        let valid_filepath = self.get_valid_path_or_create_it(filepath);
         self.filepath = Some(filepath.into());
         let mut data = String::new();
         for (i, line) in (&self.lines).iter().enumerate() {
@@ -821,6 +870,36 @@ impl Editor {
             if i + 1 != self.lines.len() { data.push('\n') }
         }
         fs::write(valid_filepath, &data).expect(&format!("Unable to write file to {}", filepath));
+        self.send_event(EditorEvent::LoadFile(filepath.into()))
+    }
+
+    pub fn save_to_drn_file(&mut self, filepath: &str) {
+        let valid_filepath = self.get_valid_path_or_create_it(filepath);
+        self.filepath = Some(filepath.into());
+        let mut encode = String::new();
+        // Encode underline
+        encode.push_str("#u: ");
+        let underline_ranges = self.underline_buffer
+            .iter()
+            .map(|r| r.get_id() + ",")
+            .filter(|id| id != "Invalid range")
+            .collect::<String>();
+        encode.push_str(&underline_ranges);
+        encode.push_str("\n");
+        // Encode bold
+        encode.push_str("#b: ");
+        let bold_ranges = self.bold_buffer
+            .iter()
+            .map(|r| r.get_id() + ",")
+            .filter(|id| id != "Invalid range")
+            .collect::<String>();
+        encode.push_str(&bold_ranges);
+        encode.push_str("\n");
+        for (i, line) in (&self.lines).iter().enumerate() {
+            encode.push_str(&line.buffer.clone().join(""));
+            if i + 1 != self.lines.len() { encode.push('\n') }
+        }
+        fs::write(valid_filepath, &encode).expect(&format!("Unable to write file to {}", filepath));
         self.send_event(EditorEvent::LoadFile(filepath.into()))
     }
 
@@ -843,6 +922,12 @@ impl Editor {
 
     /// Load a specific path
     pub fn load_file(&mut self, filepath: &str) {
+        if filepath.ends_with(".txt") { self.load_txt_file(filepath) }
+        else if filepath.ends_with(".drn") { self.load_drn_file(filepath) }
+        // TODO: .rtf ?
+    }
+
+    pub fn load_txt_file(&mut self, filepath: &str) {
         let valid_filepath = fs::canonicalize(filepath).expect("Invalid filepath");
         self.lines = vec![Line::new(Rc::clone(&self.font))];
         self.underline_buffer = vec![];
@@ -868,6 +953,36 @@ impl Editor {
             self.add_to_recent_files(filepath);
         }
         self.send_event(EditorEvent::LoadFile(filepath.into()))
+    }
+
+    pub fn load_drn_file(&mut self, filepath: &str) {
+        let valid_filepath = fs::canonicalize(filepath).expect("Invalid filepath");
+        self.lines = vec![Line::new(Rc::clone(&self.font))];
+        self.selection.reset();
+        self.filepath = Some(filepath.into());
+        let file_content = fs::read_to_string(&valid_filepath).expect(&format!("Unable to load file to {}", filepath));
+        let content_lines = file_content.split('\n').collect();
+        self.underline_buffer = Range::get_ranges_from_drn_line("#u:", &content_lines);
+        self.bold_buffer = Range::get_ranges_from_drn_line("#b:", &content_lines);
+        for (i, line) in content_lines[2..].iter().enumerate() {
+            if i < self.lines.len() {
+                self.lines.push(Line::new(Rc::clone(&self.font)));
+            }
+            self.lines[i].add_text(line);
+        }
+        let mut i : usize = self.lines.len() - 1;
+        while i > 0 && self.lines[i].is_empty() { // Remove the empty lines at the end of the file
+            self.lines.pop();
+            i -= 1;
+        }
+        self.cursor.move_to(0, 0);
+        self.update_text_layout();
+        if filepath != "new-file.txt" {
+            self.add_to_recent_paths(filepath);
+            self.add_to_recent_files(filepath);
+        }
+        self.send_event(EditorEvent::LoadFile(filepath.into()))
+
     }
 
     pub fn get_animations(&mut self) -> Vec<&mut Option<Animation>> {
