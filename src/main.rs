@@ -112,7 +112,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
             },
             EditorEvent::MenuItemUnselected(_item, key) => self.editor.add_char(key),
             EditorEvent::LoadFile(path) => set_app_title(helper, &path),
-            EditorEvent::SetDirty(path, is_dirty) => set_app_title(helper, &if !is_dirty { path } else { path + " *" }),
+            EditorEvent::SetDirty(path, is_dirty) => set_app_title(helper, &if !is_dirty { path } else { path + " °" }),
             EditorEvent::OAIResponse(menu_id, choices) => self.editor.get_menu(menu_id).async_callback(choices),
             _ => {}
         }
