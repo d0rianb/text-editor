@@ -48,7 +48,14 @@ pub enum FocusElement { Editor, Menu(MenuId), MenuInput(MenuId) }
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum EditorEvent {
-    Update, Redraw, Focus(FocusElement), MenuItemSelected(MenuAction), MenuItemUnselected(MenuAction, String), LoadFile(String)
+    Update,
+    Redraw,
+    Focus(FocusElement),
+    MenuItemSelected(MenuAction),
+    MenuItemUnselected(MenuAction, String),
+    SetDirty(String, bool),
+    LoadFile(String),
+    OAIResponse(MenuId, Vec<String>)
 }
 
 struct EditorWindowHandler {
@@ -97,13 +104,17 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
                 MenuAction::OpenSubMenu => {},
                 MenuAction::CloseMenu => self.editor.menu.close(),
                 MenuAction::FindAndJump(text) => self.editor.find(&text),
-                MenuAction::AICorrect => OpenAIWrapper::correct(&self.editor.get_selected_text()),
-                MenuAction::AIQuestion(question) => OpenAIWrapper::ask(&question.replace('$', &self.editor.get_selected_text())),
+                MenuAction::AICorrect => OpenAIWrapper::correct(&self.editor.get_selected_text(), &self.editor.get_focus_menu().unwrap()),
+                MenuAction::AIQuestion(question) => OpenAIWrapper::ask(&question.replace('$', &self.editor.get_selected_text()), &self.editor.get_focus_menu().unwrap()),
                 MenuAction::ToggleLoader(id) => self.editor.get_menu(id).toggle_loader(),
+                MenuAction::ReplaceSelection(string) => self.editor.add_text(&string),
                 _ => {}
             },
             EditorEvent::MenuItemUnselected(_item, key) => self.editor.add_char(key),
             EditorEvent::LoadFile(path) => set_app_title(helper, &path),
+            EditorEvent::SetDirty(path, is_dirty) => set_app_title(helper, &if !is_dirty { path } else { path + " *" }),
+            EditorEvent::OAIResponse(menu_id, choices) => self.editor.get_menu(menu_id).async_callback(choices),
+            _ => {}
         }
     }
 
@@ -195,9 +206,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         }
     }
 
-    fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) {
-        self.editor.modifiers = state.clone();
-    }
+    fn on_keyboard_modifiers_changed(&mut self, _helper: &mut WindowHelper<EditorEvent>, state: ModifiersState) { self.editor.modifiers = state.clone(); }
 }
 
 fn set_app_title(helper: &mut WindowHelper<EditorEvent>, path: &str) {

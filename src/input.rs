@@ -241,7 +241,7 @@ impl Input {
     }
 
     fn validate(&self, text: &str) -> bool {
-        lazy_static! { static ref FILE_REGEX: Regex = Regex::new(r".txt$").unwrap(); }
+        lazy_static! { static ref FILE_REGEX: Regex = Regex::new(r".(txt|drn)$").unwrap(); }
         match self.validator {
             Validator::File => FILE_REGEX.is_match(text),
             Validator::None => true,

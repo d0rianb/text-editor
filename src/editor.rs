@@ -36,21 +36,6 @@ use crate::stats::Stats;
 pub const EDITOR_PADDING: f32 = 10.;
 pub const EDITOR_OFFSET_TOP: f32 = 55.;
 
-#[cfg(debug_assertions)]
-fn get_working_dir() -> PathBuf { env::current_dir().unwrap() }
-
-#[cfg(not(debug_assertions))]
-fn get_working_dir() -> PathBuf {
-    let path_buf = env::current_exe().unwrap();
-    path_buf.parent().unwrap().to_path_buf()
-}
-
-pub fn get_file_path(filename: &str) -> String {
-    let mut wd = get_working_dir();
-    wd.push(filename);
-    let valid_file_path = wd.canonicalize().expect(&format!("Invalid path : {:?}", wd));
-    valid_file_path.into_os_string().to_str().unwrap().to_string()
-}
 
 pub struct Editor {
     pub lines: Vec<Line>,
@@ -74,11 +59,11 @@ pub struct Editor {
 impl Editor {
     pub fn new(width: f32, height: f32, offset: Vector2<f32>, padding: f32) -> Self {
         let font = Rc::new(RefCell::new(Font::new(
-            &get_file_path("./resources/font/CourierRegular.ttf"),
+            &Self::get_file_path("./resources/font/CourierRegular.ttf"),
             width - offset.x - padding * 2.,
             height - offset.y - padding * 2.,
         )));
-        let system_font = Rc::new(RefCell::new(Font::new(&get_file_path("./resources/font/Roboto-Regular.ttf"), width, height)));
+        let system_font = Rc::new(RefCell::new(Font::new(&Self::get_file_path("./resources/font/Roboto-Regular.ttf"), width, height)));
         Self {
             cursor: Cursor::new(0, 0, Rc::clone(&font)),
             camera: Camera::new(width, height, offset, padding),
@@ -95,7 +80,7 @@ impl Editor {
             offset,
             padding,
             font,
-            stats: Stats::default()
+            stats: Stats::default(),
         }
     }
 }
@@ -118,6 +103,7 @@ impl Editable for Editor {
             let after_pos = if self.selection.is_valid() { self.selection.end().unwrap() } else { Vector2::new(self.cursor.x, self.cursor.y) };
             self.lines[after_pos.y as usize].buffer.insert(after_pos.x as usize + 1, after.into());
         }
+        self.set_dirty(true);
         self.move_cursor_relative(1, 0);
         self.selection.reset();
     }
@@ -128,6 +114,7 @@ impl Editable for Editor {
             self.move_cursor_relative(-1, 0);
             self.end_selection();
         }
+        self.set_dirty(true);
         if self.selection.is_valid() {
             self.delete_selection();
             return;
@@ -159,6 +146,7 @@ impl Editable for Editor {
 
     fn handle_key(&mut self, keycode: VirtualKeyCode) {
         let ctrl_alt = self.modifiers.logo() && self.modifiers.alt();
+
         match keycode {
             VirtualKeyCode::Right => if ctrl_alt { self.set_line_alignment(TextAlignment::Right) } else { self.move_cursor_relative(1, 0) },
             VirtualKeyCode::Left => if ctrl_alt { self.set_line_alignment(TextAlignment::Left) } else { self.move_cursor_relative(-1, 0) },
@@ -260,7 +248,7 @@ impl Editable for Editor {
             'a' => self.select_all(),
             'l' => self.select_current_line(),
             'L' => { self.select_current_line(); self.delete_selection() },
-            'w' | 'q' => std::process::exit(0),
+            'w' | 'q' => self.quit(),
             'd' => self.select_current_word(),
             'D' => self.duplicate_line(),
             '+' | '=' => self.increase_font_size(),
@@ -375,10 +363,17 @@ impl Editable for Editor {
                 self.move_cursor_relative(0, 1);
             }
         }
+        self.set_dirty(true);
     }
 }
 
 impl Editor {
+    fn quit(&mut self) {
+        if let Some(filepath) = &mut self.filepath {  } else { self.filepath = Some("newfile.txt".into()); }
+        self.save();
+        std::process::exit(0)
+    }
+
     pub fn set_event_sender(&mut self, es: Option<UserEventSender<EditorEvent>>) {
         self.event_sender = es.clone();
         self.cursor.event_sender = es.clone();
@@ -389,6 +384,11 @@ impl Editor {
 
     fn send_event(&self, event: EditorEvent) {
         self.event_sender.as_ref().unwrap().send_event(event).unwrap();
+    }
+
+    pub fn set_dirty(&mut self, dirty: bool) {
+        let path = self.filepath.clone().unwrap_or(String::from(""));
+        self.send_event(EditorEvent::SetDirty(path, dirty)); // Set the editor dirty
     }
 
     pub fn set_offset(&mut self, offset: Vector2<f32>) {
@@ -403,6 +403,7 @@ impl Editor {
 
     pub fn on_resize(&mut self, size: Vector2<u32>) {
         self.system_font.borrow_mut().on_resize(size);
+        self.camera.on_resize(size);
         self.font.borrow_mut().on_resize(size);
     }
 
@@ -611,6 +612,22 @@ impl Editor {
         ]);
     }
 
+    #[cfg(debug_assertions)]
+    fn get_working_dir() -> PathBuf { env::current_dir().unwrap() }
+
+    #[cfg(not(debug_assertions))]
+    fn get_working_dir() -> PathBuf {
+        let path_buf = env::current_exe().unwrap();
+        path_buf.parent().unwrap().to_path_buf()
+    }
+
+    pub fn get_file_path(filename: &str) -> String {
+        let mut wd = Self::get_working_dir();
+        wd.push(filename);
+        let valid_file_path = wd.canonicalize().expect(&format!("Invalid path : {:?}", wd));
+        valid_file_path.into_os_string().to_str().unwrap().to_string()
+    }
+
     /// Add a range to a buffer according to the underline/bold rules
     fn add_range_to_buffer(range: Range, buffer: &mut Vec<Range>) {
         if !range.is_valid() { return; }
@@ -636,10 +653,12 @@ impl Editor {
 
     pub fn underline(&mut self) {
         Self::add_range_to_buffer(self.selection.get_range(), &mut self.underline_buffer);
+        self.set_dirty(true);
     }
 
     pub fn bold(&mut self) {
         Self::add_range_to_buffer(self.selection.get_range(), &mut self.bold_buffer);
+        self.set_dirty(true);
     }
 
     pub fn set_line_alignment(&mut self, alignment: TextAlignment) {
@@ -654,12 +673,14 @@ impl Editor {
         } else {
             self.get_current_line().set_alignment(alignment);
         }
+        self.set_dirty(true);
     }
 
     fn increase_font_size(&mut self) {
         self.font.borrow_mut().change_font_size(2);
         self.update_text_layout();
         self.update_camera();
+        self.set_dirty(true);
         self.send_event(EditorEvent::Redraw);
     }
 
@@ -667,6 +688,7 @@ impl Editor {
         self.font.borrow_mut().change_font_size(-2);
         self.update_text_layout();
         self.update_camera();
+        self.set_dirty(true);
         self.send_event(EditorEvent::Redraw);
     }
 
@@ -717,7 +739,7 @@ impl Editor {
         if let Some(prefs) = &self.cached_prefs {
             prefs.get(key).unwrap().to_owned()
         } else {
-            let prefs_path = get_file_path("./resources/prefs.yaml");
+            let prefs_path = Self::get_file_path("./resources/prefs.yaml");
             let prefs_str = fs::read_to_string(prefs_path).expect("Can't find the preference file");
             let prefs: serde_yaml::Value = serde_yaml::from_str(&prefs_str).expect("Invalid preferences");
             self.cached_prefs = Some(prefs.clone());
@@ -727,7 +749,7 @@ impl Editor {
 
     fn set_prefs_key(&mut self, key: &str, value: serde_yaml::Value) {
         let mut prefs = if let Some(prefs) = &self.cached_prefs { prefs.to_owned() } else {
-            let prefs_path = get_file_path("./resources/prefs.yaml");
+            let prefs_path = Self::get_file_path("./resources/prefs.yaml");
             let prefs_str = fs::read_to_string(prefs_path).expect("Can't find the preference file");
             let prefs: serde_yaml::Value = serde_yaml::from_str(&prefs_str).expect("Invalid preferences");
             prefs
@@ -735,7 +757,7 @@ impl Editor {
         *prefs.get_mut(key).unwrap() = value.into();
         let mut buffer = Vec::new();
         serde_yaml::to_writer(&mut buffer, &prefs).unwrap();
-        fs::write(get_file_path("./resources/prefs.yaml"), buffer).expect("Unable to write to the preference file");
+        fs::write(Self::get_file_path("./resources/prefs.yaml"), buffer).expect("Unable to write to the preference file");
         self.cached_prefs = Option::None;
     }
 
@@ -828,8 +850,7 @@ impl Editor {
     pub fn save(&mut self) {
         if let Some(f) = self.filepath.clone() {
             if &f == "new-file.txt" { return self.toggle_save_popup(); }
-            if f.ends_with(".txt") { self.save_to_file(&f); }
-            else if f.ends_with(".drn") { self.save_to_drn_file(&f); }
+            self.save_to_file(&f);
         } else {
             self.toggle_save_popup()
         }
@@ -859,6 +880,7 @@ impl Editor {
     pub fn save_to_file(&mut self, filepath: &str) {
         if filepath.ends_with(".txt") { self.save_to_txt_file(filepath) }
         else if filepath.ends_with(".drn") { self.save_to_drn_file(filepath) }
+        self.set_dirty(false);
     }
 
     pub fn save_to_txt_file(&mut self, filepath: &str) {

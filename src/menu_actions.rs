@@ -31,6 +31,7 @@ pub enum MenuAction {
     AIQuestion(String),
     AIQuestionWithInput,
     ToggleLoader(MenuId),
+    ReplaceSelection(String)
 }
 
 impl fmt::Display for MenuAction {

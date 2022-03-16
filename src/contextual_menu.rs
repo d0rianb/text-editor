@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
-use speedy2d::font::{FormattedTextBlock, TextOptions};
+use speedy2d::font::{FormattedTextBlock, TextAlignment, TextOptions};
 use speedy2d::Graphics2D;
 use speedy2d::shape::Rectangle;
 use speedy2d::window::{ModifiersState, UserEventSender, VirtualKeyCode};
@@ -207,6 +207,7 @@ impl ContextualMenu {
     }
 
     fn set_focus(&mut self, index: isize) {
+        if self.items.len() == 0 { return; }
         let dir = index - self.focus_index;
         self.focus_index = index % self.items.len() as isize;
         if self.focus_index < 0 { self.focus_index += self.items.len() as isize }
@@ -364,6 +365,22 @@ impl ContextualMenu {
         self.focus();
     }
 
+    pub fn async_callback(&mut self, choices: Vec<String>) {
+        if !self.is_visible || !self.is_focus() { return }
+        let font = self.system_font.clone();
+        let es = self.event_sender.as_ref().unwrap().clone();
+        let mut item = self.get_focused_item();
+        item.loader = None;
+        item.sub_menu = Some(ContextualMenu::new_with_items(
+            font,
+            es.clone(),
+            choices.iter().map(|s| MenuItem::new(s, MenuAction::ReplaceSelection(s.clone().to_string()))).collect()
+        ));
+        item.sub_menu.as_mut().unwrap().open();
+        item.sub_menu.as_mut().unwrap().set_focus(0);
+        es.send_event(EditorEvent::Redraw);
+    }
+
     fn width(&self) -> f32 { self.formatted_items.iter().map(|ftb| ftb.width()).max_by(|x, y| x.abs().partial_cmp(&y.abs()).unwrap()).unwrap_or(0.) + 8. * ITEM_PADDING }
 
     fn height(&self) -> f32 {
@@ -388,9 +405,10 @@ impl ContextualMenu {
     }
 
     pub fn update_content(&mut self) {
+        let max_width = 500.;
         self.formatted_items = self.items
             .iter()
-            .map(|item| self.system_font.borrow().layout_text(&item.title, TextOptions::default())) // TODO: wrap on max size
+            .map(|item| self.system_font.borrow().layout_text(&item.title, TextOptions::default().with_wrap_to_width(max_width, TextAlignment::Left))) // TODO: wrap on max size
             .collect();
     }
 

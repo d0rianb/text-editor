@@ -83,7 +83,7 @@ impl Line {
     pub fn get_next_jump(&self, index: u32) -> (u32, u32) {
         let mut start_index = index;
         let mut end_index = index;
-        let char_jump_list = [' ', '_', '-', '/'];
+        let char_jump_list = [' ', '_', '-', '/', '(', ')', '[', ']', '{', '}', '"', '\''];
         let chars: Vec<char> =  self.buffer.join("").chars().collect();
         let max_indices = chars.len() as u32;
         while start_index > 0 &&  char_jump_list.contains(&chars[start_index as usize - 1]) { start_index -= 1 }

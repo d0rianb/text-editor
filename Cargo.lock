@@ -1863,6 +1863,7 @@ dependencies = [
 name = "text-editor"
 version = "0.2.0"
 dependencies = [
+ "backtrace",
  "clipboard",
  "derivative",
  "hyper",

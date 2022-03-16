@@ -22,7 +22,7 @@ impl Loader {
     pub fn new(es:UserEventSender<EditorEvent> ) -> Self {
         Self {
             event_sender: es.clone(),
-            rotation_animation: Some(Animation::new_infinite(-HALF_PI, TWO_PI - HALF_PI, ANIMATION_DURATION, EasingFunction::Square, es.clone()))
+            rotation_animation: Some(Animation::new_infinite(-HALF_PI, TWO_PI - HALF_PI, ANIMATION_DURATION, EasingFunction::Bilinear, es.clone()))
         }
     }
 

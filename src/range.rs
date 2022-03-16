@@ -135,7 +135,6 @@ impl Range {
                 .map(|n| n.parse::<u32>());
             if parsed_number.clone().any(|n| n.is_err()) { continue }
             let coords: Vec<u32> = parsed_number.map(|n| n.unwrap()).collect();
-            dbg!(&coords);
             result.push(Range::new(Vector2::new(coords[0], coords[1]),  Vector2::new(coords[2], coords[3])))
         }
         result

@@ -6,7 +6,7 @@ use crate::EditorEvent;
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum EasingFunction {
     Linear,
-    Square,
+    Bilinear,
     Cubic,
     BiCubic,
     SmoothStep,
@@ -21,7 +21,7 @@ pub enum EasingFunction {
 fn get_easing_fn(f: EasingFunction) -> Box<dyn Fn(f32) -> f32 + 'static> {
     let function = match f {
         EasingFunction::Linear => |t: f32| t,
-        EasingFunction::Square => |t: f32| t.powi(2),
+        EasingFunction::Bilinear => |t: f32| t.powi(2),
         EasingFunction::Cubic => |t: f32| t.powi(3),
         EasingFunction::BiCubic => |t: f32| t.powi(4),
         EasingFunction::SmoothStep => |t: f32| (3. - 2. * t) * t.powi(2),

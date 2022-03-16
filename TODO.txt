@@ -1,7 +1,21 @@
+ TODO:
  - multiple windows
  - multiple cursors
+ - bold text
  - cmd-Z
  - find/replace
  - write tests
  - debounce ())
  - incremente suggestion in autofill
+ - save indicator
+ - logging
+ - shortcup helper menu
+ - double clic
+
+ BUGS:
+  - cmd+any doesn't work anymore after ^ or ¨ char has been pressed
+  - rendering issue when the popup menu first pop
+  - The input camera is often wrong
+  - tabs are not renderered
+  - select_word() select also the parenthesis
+  - delete underline when delete text

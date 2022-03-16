@@ -5,6 +5,7 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
 use speedy2d::window::UserEventSender;
+use speedy2d::window::VirtualKeyCode::V;
 
 use crate::animation::{Animation, EasingFunction};
 use crate::cursor::Cursor;
@@ -80,14 +81,19 @@ impl Camera {
         self.y = 0.;
     }
 
+    pub fn on_resize(&mut self, size: Vector2<u32>) {
+        self.width = size.x as f32;
+        self.height = size.y as f32;
+    }
+
     pub fn move_x(&mut self, dx: f32) {
-        let new_x = (self.x + dx).clamp(0., self.width);
+        let new_x = (self.x + dx).max(0.);
         self.transition(new_x + self.initial_x, self.y + self.initial_y);
         self.x = new_x;
     }
 
     pub fn move_y(&mut self, dy: f32) {
-        let new_y = (self.y + dy).clamp(0., self.height);
+        let new_y = (self.y + dy).max(0.);
         self.transition(self.x + self.initial_x, new_y + self.initial_y);
         self.y = new_y;
     }
