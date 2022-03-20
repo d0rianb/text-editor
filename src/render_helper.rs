@@ -1,4 +1,3 @@
-use lazy_static::lazy_static;
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;

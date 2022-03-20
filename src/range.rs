@@ -1,8 +1,6 @@
 use std::cell::RefCell;
-use std::cmp;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
-use std::slice::Split;
 
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -130,7 +128,7 @@ impl Range {
         for range_str in line.split(",") {
             if range_str == line { break; }
             let numbers: Vec<&str> = range_str.trim().split("-").collect();
-            let mut parsed_number = numbers
+            let parsed_number = numbers
                 .iter()
                 .map(|n| n.parse::<u32>());
             if parsed_number.clone().any(|n| n.is_err()) { continue }

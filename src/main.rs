@@ -17,6 +17,7 @@ mod menu_actions;
 mod stats;
 mod open_ai_wrapper;
 mod loader;
+mod tesl;
 
 use std::thread;
 use std::env;
@@ -81,6 +82,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
         });
     }
 
+    #[warn(unreachable_patterns)]
     fn on_user_event(&mut self, helper: &mut WindowHelper<EditorEvent>, user_event: EditorEvent) {
         match user_event {
             EditorEvent::Redraw => helper.request_redraw(),
@@ -112,7 +114,7 @@ impl WindowHandler<EditorEvent> for EditorWindowHandler {
             },
             EditorEvent::MenuItemUnselected(_item, key) => self.editor.add_char(key),
             EditorEvent::LoadFile(path) => set_app_title(helper, &path),
-            EditorEvent::SetDirty(path, is_dirty) => set_app_title(helper, &if !is_dirty { path } else { path + " °" }),
+            EditorEvent::SetDirty(path, is_dirty) => set_app_title(helper, &if !is_dirty { path } else { path + " *" }),
             EditorEvent::OAIResponse(menu_id, choices) => self.editor.get_menu(menu_id).async_callback(choices),
             _ => {}
         }

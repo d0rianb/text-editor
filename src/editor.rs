@@ -1,7 +1,5 @@
 use std::{cmp, env, fs};
 use std::cell::RefCell;
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::ops::Add;
 use std::rc::Rc;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -17,7 +15,7 @@ use clipboard::ClipboardProvider;
 use clipboard::ClipboardContext;
 use lazy_static::lazy_static;
 use regex::Regex;
-use ifmt::{iformat, iprintln};
+use ifmt::iformat;
 
 use serde_yaml;
 
@@ -54,6 +52,7 @@ pub struct Editor {
     pub menu: ContextualMenu,
     pub cached_prefs: Option<serde_yaml::Value>,
     pub stats: Stats,
+    pub should_edit_file: bool, // so the input does not trigger file specific events
 }
 
 impl Editor {
@@ -81,6 +80,7 @@ impl Editor {
             padding,
             font,
             stats: Stats::default(),
+            should_edit_file: true
         }
     }
 }
@@ -369,7 +369,7 @@ impl Editable for Editor {
 
 impl Editor {
     fn quit(&mut self) {
-        if let Some(filepath) = &mut self.filepath {  } else { self.filepath = Some("newfile.txt".into()); }
+        if let Some(_filepath) = &mut self.filepath {  } else { self.filepath = Some("newfile.txt".into()); }
         self.save();
         std::process::exit(0)
     }
@@ -383,6 +383,10 @@ impl Editor {
     }
 
     fn send_event(&self, event: EditorEvent) {
+        match event {
+            EditorEvent::SetDirty(_, _) | EditorEvent::LoadFile(_) => if !self.should_edit_file { return; }
+            _ => {}
+        }
         self.event_sender.as_ref().unwrap().send_event(event).unwrap();
     }
 
@@ -562,13 +566,14 @@ impl Editor {
         menu
     }
 
+    #[warn(unused_labels)]
     fn get_focus_menu_id(&mut self) -> Option<MenuId> {
         if !self.menu.is_focus() { return Option::None }
         let mut id = self.menu.id;
         let mut last_menu_focused = false;
         'menus: while !last_menu_focused {
             let menu = self.get_menu(id);
-            let mut items_submenu =  menu.items.iter().map(|i| i.sub_menu.as_ref()).clone();
+            let items_submenu =  menu.items.iter().map(|i| i.sub_menu.as_ref()).clone();
             'items: for (i, sub_menu) in items_submenu.enumerate() {
                 if let Some(sub_menu) = sub_menu {
                     if sub_menu.is_focus() {
@@ -711,6 +716,7 @@ impl Editor {
     }
 
     fn get_stats(&self) -> Vec<String> {
+        // TODO: get stats of selection if there is one instead of the whole file
         let words_count = self.lines.iter().fold(0, |acc, line| acc + line.get_word_count());
         let char_count = self.lines.iter().fold(0, |acc, line| acc + line.buffer.len());
         let update_duration = self.stats.update_duration.as_micros() as f64 / 1000.;

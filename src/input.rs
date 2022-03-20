@@ -16,7 +16,6 @@ use crate::{Animation, Editable, Editor, EditorEvent, FocusElement, MenuId};
 use crate::menu_actions::{MenuAction, MenuActionFn};
 use crate::animation::EasingFunction;
 use crate::camera::Camera;
-use crate::FocusElement::Menu;
 use crate::render_helper::draw_rounded_rectangle_with_border;
 
 pub const MIN_INPUT_WIDTH: f32 = 250.;
@@ -129,6 +128,7 @@ impl Input {
         editor.set_offset(offset);
         editor.set_event_sender(Some(es));
         editor.camera.safe_zone_size = 30.;
+        editor.should_edit_file = false;
         let blank_text_layout = editor.lines[0].formatted_text_block.clone();
         Self {
             editor,

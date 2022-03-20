@@ -11,6 +11,9 @@
  - logging
  - shortcup helper menu
  - double clic
+ - open file with drag and drop
+
+ - Scripting language (why not ?)
 
  BUGS:
   - cmd+any doesn't work anymore after ^ or ¨ char has been pressed

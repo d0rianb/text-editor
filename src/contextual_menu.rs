@@ -193,7 +193,7 @@ impl ContextualMenu {
 
     fn move_up(&mut self) {
         if !self.is_focus() { return; }
-        let mut index = self.focus_index as i32 - 1;
+        let index = self.focus_index as i32 - 1;
         let start_y = if let Some(animation) = &self.focus_y_animation { animation.value } else { self.get_item_offset_y(self.focus_index as usize) };
         self.set_focus(index as isize);
         self.focus_y_animation = Some(Animation::new(start_y, self.get_item_offset_y(self.focus_index as usize), ANIMATION_DURATION, EasingFunction::EaseOut, self.event_sender.clone().unwrap()));
@@ -287,7 +287,7 @@ impl ContextualMenu {
 
     pub fn toggle_loader(&mut self) {
         let es = self.event_sender.clone().unwrap();
-        let mut item = self.get_focused_item();
+        let item = self.get_focused_item();
         match item.loader {
             None => item.start_loader(es),
             Some(_) => {}

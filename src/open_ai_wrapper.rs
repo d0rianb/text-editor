@@ -1,15 +1,12 @@
 use std::{fs, thread};
-use std::io::Read;
 use std::time::Duration;
 
 use hyper_tls::HttpsConnector;
 use hyper::body::Buf;
 use tokio;
 use serde::{Serialize, Deserialize};
-use serde_json::Value;
-use speedy2d::window::UserEventSender;
 
-use crate::{EditorEvent, MenuId};
+use crate::EditorEvent;
 use crate::editor::Editor;
 use crate::contextual_menu::ContextualMenu;
 

@@ -35,5 +35,4 @@ pub trait Editable {
     fn copy(&mut self);
 
     fn paste(&mut self);
-
 }

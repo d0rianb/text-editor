@@ -1,4 +1,3 @@
-use itertools::GroupBy;
 use lazy_static::lazy_static;
 use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
@@ -6,7 +5,6 @@ use speedy2d::Graphics2D;
 use speedy2d::window::UserEventSender;
 use crate::{Animation, EditorEvent};
 use crate::animation::EasingFunction;
-use crate::render_helper::draw_rounded_line;
 
 const TWO_PI: f32 = std::f32::consts::TAU;
 const HALF_PI: f32 = std::f32::consts::PI / 2.;

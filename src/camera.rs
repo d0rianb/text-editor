@@ -5,7 +5,6 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::Graphics2D;
 use speedy2d::window::UserEventSender;
-use speedy2d::window::VirtualKeyCode::V;
 
 use crate::animation::{Animation, EasingFunction};
 use crate::cursor::Cursor;
