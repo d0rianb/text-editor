@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate derivative;
+extern crate core;
 
 mod editor;
 mod cursor;

@@ -566,7 +566,6 @@ impl Editor {
         menu
     }
 
-    #[warn(unused_labels)]
     fn get_focus_menu_id(&mut self) -> Option<MenuId> {
         if !self.menu.is_focus() { return Option::None }
         let mut id = self.menu.id;
@@ -574,6 +573,7 @@ impl Editor {
         'menus: while !last_menu_focused {
             let menu = self.get_menu(id);
             let items_submenu =  menu.items.iter().map(|i| i.sub_menu.as_ref()).clone();
+            #[warn(unused_labels)]
             'items: for (i, sub_menu) in items_submenu.enumerate() {
                 if let Some(sub_menu) = sub_menu {
                     if sub_menu.is_focus() {

@@ -4,7 +4,7 @@ pub struct Lexer {
     temp_is_string: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LexerItem {
     Operator(String),
     Separator(String),
@@ -30,10 +30,9 @@ impl Lexer {
         self.temp = String::new();
     }
 
-    pub fn lex(&mut self, input: &str) -> &Vec<LexerItem> {
+    pub fn scan(&mut self, input: &str) -> Vec<LexerItem> {
         let mut it = input.chars();
         while let Some(c) = it.next() {
-            print!("{:?}", &c);
             match c {
                 'A'..='z' | '0'..='9' => self.temp.push(c),
                 '(' | ')' | '{' | '}' => { self.flush_temp(); self.result.push(LexerItem::Separator(c.to_string())) },
@@ -43,12 +42,12 @@ impl Lexer {
                     self.result.push(LexerItem::Separator(c.to_string()));
                 },
                 '=' | '+' | '-' | '*' | '/' | '%' | '.' => { self.flush_temp(); self.result.push(LexerItem::Operator(c.to_string())) },
-                ' ' => if self.temp_is_string { self.result.push(LexerItem::Literal(c.to_string())) } else { self.flush_temp() }
+                ' ' => if self.temp_is_string { self.temp.push(c) } else { self.flush_temp() }
                 '\n' => self.flush_temp(),
-                _ => panic!("Unexpected character {}", c)
+                _ => panic!("[Lexer] Unexpected character {}", c)
             };
         }
         self.flush_temp();
-        &self.result
+        self.result.clone()
     }
 }
