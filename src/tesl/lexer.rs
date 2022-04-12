@@ -9,6 +9,7 @@ pub enum LexerItem {
     Operator(String),
     Separator(String),
     Literal(String),
+    NewLine
 }
 
 impl Lexer {
@@ -35,15 +36,15 @@ impl Lexer {
         while let Some(c) = it.next() {
             match c {
                 'A'..='z' | '0'..='9' => self.temp.push(c),
-                '(' | ')' | '{' | '}' => { self.flush_temp(); self.result.push(LexerItem::Separator(c.to_string())) },
+                '(' | ')' | '{' | '}' | '.' => { self.flush_temp(); self.result.push(LexerItem::Separator(c.to_string())) },
                 '"' | '\'' => {
                     if !self.temp_is_string { self.temp_is_string = true }
                     else { self.flush_temp_even_empty(); self.temp_is_string = false; }
                     self.result.push(LexerItem::Separator(c.to_string()));
                 },
-                '=' | '+' | '-' | '*' | '/' | '%' | '.' => { self.flush_temp(); self.result.push(LexerItem::Operator(c.to_string())) },
+                '=' | '+' | '-' | '*' | '/' | '%' => { self.flush_temp(); self.result.push(LexerItem::Operator(c.to_string())) },
                 ' ' => if self.temp_is_string { self.temp.push(c) } else { self.flush_temp() }
-                '\n' => self.flush_temp(),
+                '\n' => { self.flush_temp(); self.result.push(LexerItem::NewLine)},
                 _ => panic!("[Lexer] Unexpected character {}", c)
             };
         }

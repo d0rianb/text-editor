@@ -8,6 +8,8 @@ pub enum Token { // TODO: keep track of the source coords
     Type(Type), // int, str, float, bool
     Operator(Operator), // = + / *
     Value(Value), // true, 2.3,
+    NewLine,
+    NoOp
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,7 +45,8 @@ pub enum Operator {
     Divide,
     Modulo,
     Equal,
-    Dot
+    Arrow, // =>
+    DotDot, // .. for range
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +60,7 @@ pub enum Separator {
     LAngleBracket,
     RAngleBracket,
     Quote,
+    Dot,
 }
 
 pub struct Parser;
@@ -78,7 +82,7 @@ impl Parser {
             }
             return is_numeric;
         }
-        false
+        matches!(token, Token::Value(Value::Int(_)) | Token::Value(Value::Float(_)))
     }
 
     fn is_bool(token: &Token) -> bool {
@@ -114,16 +118,17 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self, input: Vec<LexerItem>) -> Vec<Token> {
+    pub fn tokenize(&mut self, input: Vec<LexerItem>) -> Vec<Token> {
         let mut tokens: Vec<Token> = input
             .iter()
             .map(|el| Self::identify(el))
             .collect();
+
         let ident_index: Vec<usize> = tokens
             .iter()
             .enumerate()
             .filter(|(i, el)| matches!(*el, Token::Identifier(_)))
-            .map(|(i, el)| {i})
+            .map(|(i, el)| { i })
             .collect();
 
         // Check if identifier is instead a value and assign it
@@ -133,8 +138,39 @@ impl Parser {
             if Self::is_bool(&tokens[i]) { Self::set_token_as_parsed_bool(&mut tokens[i]); } // value is bool
         }
 
+        let token_len = tokens.len();
+        for i in 0..token_len {
+            if &tokens[i] == &Token::Separator(Separator::Dot) {
+                if i + 1 < token_len && tokens[i + 1] == Token::Separator(Separator::Dot) { // handle '..'
+                    tokens[i] = Token::Operator(Operator::DotDot);
+                    tokens[i + 1] = Token::NoOp;
+                }
+                if i > 0 && i + 1 < token_len && Self::is_numeric(&tokens[i - 1]) && Self::is_numeric(&tokens[i + 1]) { // handle floats
+                    if let Token::Value(Value::Int(decimal_part)) = &tokens[i - 1] {
+                        if let Token::Value(Value::Int(float_part)) = &tokens[i + 1] {
+                            let float_value = format!("{}.{}", decimal_part, float_part).parse::<f32>().expect("[Parser] Unable to parse float");
+                            tokens[i - 1] = Token::NoOp;
+                            tokens[i] = Token::Value(Value::Float(float_value));
+                            tokens[i + 1] = Token::NoOp;
+                        }
+                    }
+                }
+            }
+            if &tokens[i] == &Token::Operator(Operator::Equal) && &tokens[i + 1] == &Token::Separator(Separator::RAngleBracket) {
+                tokens[i] = Token::Operator(Operator::Arrow);
+                tokens[i + 1] = Token::NoOp;
+            }
+        }
+
+        tokens = tokens // Remove the NoOp tokens
+            .into_iter()
+            .filter(|t| t != &Token::NoOp)
+            .collect::<Vec<Token>>();
+
         tokens.clone()
     }
+
+    pub fn parse(input: &str) {}
 
     /// Identify the details of a literal item
     pub fn identify(item: &LexerItem) -> Token {
@@ -147,7 +183,6 @@ impl Parser {
                     "/" => Token::Operator(Operator::Divide),
                     "%" => Token::Operator(Operator::Modulo),
                     "=" => Token::Operator(Operator::Equal),
-                    "." => Token::Operator(Operator::Dot),
                     _ => panic!("[Parser] Unexpected operator {}", op)
                 }
             },
@@ -162,6 +197,7 @@ impl Parser {
                     "}" => Token::Separator(Separator::RCurlyBracket),
                     "<" => Token::Separator(Separator::LAngleBracket),
                     ">" => Token::Separator(Separator::RAngleBracket),
+                    "." => Token::Separator(Separator::Dot),
                     _ => panic!("[Parser] Unexpected separator {}", sep)
                 }
             },
@@ -178,6 +214,7 @@ impl Parser {
                     _ => Token::Identifier(lit.clone()) // arbitrary
                 }
             }
+            LexerItem::NewLine => Token::NewLine
         }
     }
 }

@@ -18,7 +18,8 @@ mod menu_actions;
 mod stats;
 mod open_ai_wrapper;
 mod loader;
-mod tesl;
+// Uncomment to load TESL parser
+// mod tesl;
 
 use std::thread;
 use std::env;
