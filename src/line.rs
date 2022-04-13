@@ -5,8 +5,10 @@ use speedy2d::color::Color;
 use speedy2d::dimen::Vector2;
 use speedy2d::font::{FormattedTextBlock, TextAlignment, TextOptions};
 use speedy2d::Graphics2D;
+use crate::style_range::StyleRange;
 
 use crate::font::Font;
+use crate::range::Range;
 
 const INITIAL_LINE_CAPACITY: usize = 1024;
 
@@ -93,7 +95,7 @@ impl Line {
         (start_index, end_index)
     }
 
-    pub fn update_text_layout(&mut self) -> i32 { // return the difference of length
+    pub fn update_text_layout(&mut self, style_buffer: &Vec<StyleRange>) -> i32 { // return the difference of length
         let string = self.get_text();
         let font = self.font.borrow();
         let font_formatted_string = font.format(&string);

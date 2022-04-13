@@ -13,6 +13,7 @@ use crate::camera::Camera;
 use crate::font::Font;
 use crate::line::Line;
 use crate::range::{get_line_length, Range};
+use crate::range_trait::RangeTrait;
 
 const ANIMATION_DURATION: f32 = 100.; // ms
 

@@ -18,6 +18,10 @@ mod menu_actions;
 mod stats;
 mod open_ai_wrapper;
 mod loader;
+mod style_range;
+mod range_trait;
+
+
 // Uncomment to load TESL parser
 // mod tesl;
 

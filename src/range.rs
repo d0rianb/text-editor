@@ -10,6 +10,7 @@ use speedy2d::shape::Rectangle;
 use crate::camera::Camera;
 use crate::font::Font;
 use crate::line::Line;
+use crate::range_trait::RangeTrait;
 
 pub fn get_line_length(i: u32, lines: &[Line]) -> u32 {
     if i + 1 > lines.len() as u32 { return 0; } // Prevent overflow
@@ -56,28 +57,30 @@ pub fn vector_min(v1: Vector2<u32>, v2: Vector2<u32>) -> Vector2<u32> {
     if vector_max(v1, v2) == v2 { v1 } else { v2 }
 }
 
-impl Range {
-    pub fn new(start: Vector2<u32>, end: Vector2<u32>) -> Self {
+impl RangeTrait for Range {
+    fn new(start: Vector2<u32>, end: Vector2<u32>) -> Self {
         Self {
             start: Some(start),
             end: Some(end),
         }
     }
 
-    pub fn start(&mut self, position: Vector2<u32>) {
+    fn get_range(&self) -> &Range { &self }
+
+    fn start(&mut self, position: Vector2<u32>) {
         self.start = Some(Vector2::new(position.x, position.y));
     }
 
-    pub fn end(&mut self, position: Vector2<u32>) {
+    fn end(&mut self, position: Vector2<u32>) {
         self.end = Some(Vector2::new(position.x, position.y));
     }
 
-    pub fn reset(&mut self) {
+    fn reset(&mut self) {
         self.start = Option::None;
         self.end = Option::None;
     }
 
-    pub fn add(&mut self, other: Range) {
+    fn add(&mut self, other: Range) {
         if !other.is_valid() { return; }
         if !self.is_valid() {
             self.start(other.start.unwrap());
@@ -90,34 +93,34 @@ impl Range {
         self.end(end);
     }
 
-    pub fn include(&self, other: &Range) -> bool {
+    fn include(&self, other: &Range) -> bool {
         if !self.is_valid() || !other.is_valid() { return false; }
         vector_min(self.start.unwrap(), other.start.unwrap()) == self.start.unwrap()
             && vector_max(self.end.unwrap(), other.end.unwrap()) == self.end.unwrap()
     }
 
-    pub fn is_valid(&self) -> bool {
+    fn is_valid(&self) -> bool {
         self.start.is_some() && self.end.is_some() && self.start != self.end
     }
 
-    pub fn get_id(&self) -> String {
+    fn get_id(&self) -> String {
         if !self.is_valid() { return "Invalid range".to_string() }
         let start = self.start.unwrap();
         let end = self.end.unwrap();
         format!("{}-{}-{}-{}", start.x, start.y, end.x, end.y)
     }
 
-    pub fn get_real_start(&self) -> Option<Vector2<u32>> {
+    fn get_real_start(&self) -> Option<Vector2<u32>> {
         if !self.is_valid() { return Option::None; }
         Some(vector_min(self.start.unwrap(), self.end.unwrap()))
     }
 
-    pub fn get_real_end(&self) -> Option<Vector2<u32>> {
+    fn get_real_end(&self) -> Option<Vector2<u32>> {
         if !self.is_valid() { return Option::None; }
         Some(vector_max(self.start.unwrap(), self.end.unwrap()))
     }
 
-    pub fn get_ranges_from_drn_line(pattern: &str, lines: &Vec<&str>) -> Vec<Range> {
+    fn get_ranges_from_drn_line(pattern: &str, lines: &Vec<&str>) -> Vec<Range> {
         let mut result = vec![];
         let mut line = lines
             .iter()
@@ -138,7 +141,7 @@ impl Range {
         result
     }
 
-    pub fn get_lines_index(&mut self, lines: &[Line]) -> Vec<(u32, u32)> {
+    fn get_lines_index(&mut self, lines: &[Line]) -> Vec<(u32, u32)> {
         // relative index of selection starting in the self.start.y index
         if !self.is_valid() { return vec![]; }
         let start = self.get_real_start().unwrap();
@@ -154,7 +157,7 @@ impl Range {
         result
     }
 
-    pub fn _render(&mut self, font: Rc<RefCell<Font>>, lines: &[Line], camera: &Camera, graphics: &mut Graphics2D) {
+    fn _render(&mut self, font: Rc<RefCell<Font>>, lines: &[Line], camera: &Camera, graphics: &mut Graphics2D) {
         if !self.is_valid() { return; }
         let font_width = font.borrow().char_width;
         let font_height = font.borrow().char_height;
@@ -173,5 +176,4 @@ impl Range {
             )
         }
     }
-
 }

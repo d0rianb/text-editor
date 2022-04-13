@@ -58,7 +58,7 @@ impl Font {
 
     pub fn layout_text(&self, text: &str, text_layout_options: TextOptions) -> Rc<FormattedTextBlock> {
         let escaped_text = self.format(text)
-            .replace('\t', "  ")// Just for rendering
+            .replace('\t', " ")// Just for rendering
             .replace(" " ,"\u{a0}");  // Just for rendering
         self.s2d_font.layout_text(&escaped_text, 2.0 * self.size as f32, text_layout_options)
     }

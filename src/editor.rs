@@ -1,4 +1,5 @@
 use std::{cmp, env, fs};
+use std::any::TypeId;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::path::{Path, PathBuf};
@@ -23,12 +24,14 @@ use crate::cursor::{Cursor, CURSOR_OFFSET_X};
 use crate::camera::Camera;
 use crate::contextual_menu::{ContextualMenu, MenuItem};
 use crate::{Animation, EditorEvent, FocusElement, MenuId};
+use crate::style_range::StyleRange;
 use crate::menu_actions::MenuAction;
 use crate::font::Font;
 use crate::line::Line;
 use crate::range::Range;
 use crate::selection::Selection;
 use crate::editable::Editable;
+use crate::range_trait::RangeTrait;
 use crate::stats::Stats;
 
 pub const EDITOR_PADDING: f32 = 10.;
@@ -47,12 +50,11 @@ pub struct Editor {
     pub filepath: Option<String>,
     pub event_sender: Option<UserEventSender<EditorEvent>>,
     pub selection: Selection,
-    pub underline_buffer: Vec<Range>,
-    pub bold_buffer: Vec<Range>,
+    pub style_buffer: Vec<StyleRange>, // a buffer that keeps track of every style in the document
     pub menu: ContextualMenu,
     pub cached_prefs: Option<serde_yaml::Value>,
     pub stats: Stats,
-    pub should_edit_file: bool, // so the input does not trigger file specific events
+    pub should_edit_file: bool, // so the input internal editor does not trigger file specific events
 }
 
 impl Editor {
@@ -72,8 +74,7 @@ impl Editor {
             modifiers: ModifiersState::default(),
             filepath: Option::None,
             event_sender: Option::None,
-            underline_buffer: vec![],
-            bold_buffer: vec![],
+            style_buffer: vec![],
             menu: ContextualMenu::new(system_font),
             cached_prefs: Option::None,
             offset,
@@ -156,7 +157,7 @@ impl Editable for Editor {
             VirtualKeyCode::Delete => { self.move_cursor_relative(1, 0); self.delete_char(); },
             VirtualKeyCode::Return => if self.modifiers.alt() { self.toggle_ai_contextual_menu() } else { self.new_line() },
             VirtualKeyCode::Escape => self.menu.close(),
-            VirtualKeyCode::Tab => if self.modifiers.alt() { self.menu.open() },
+            VirtualKeyCode::Tab => if self.modifiers.alt() { self.menu.open() } else { self.add_text("    ") },
             _ => { return; },
         }
         self.update_text_layout();
@@ -390,7 +391,7 @@ impl Editor {
         self.event_sender.as_ref().unwrap().send_event(event).unwrap();
     }
 
-    pub fn set_dirty(&mut self, dirty: bool) {
+    pub fn set_dirty(&mut self, dirty: bool) { // Sert the editor in a "unsave" state --> display a star in the title bar
         let path = self.filepath.clone().unwrap_or(String::from(""));
         self.send_event(EditorEvent::SetDirty(path, dirty)); // Set the editor dirty
     }
@@ -634,35 +635,37 @@ impl Editor {
     }
 
     /// Add a range to a buffer according to the underline/bold rules
-    fn add_range_to_buffer(range: Range, buffer: &mut Vec<Range>) {
+    fn add_range_to_buffer<T: RangeTrait>(range_like: T, buffer: &mut Vec<T>) {
+        // switch on the type of the generic parameter to determine wether it's a simple Range or a StyledRange
+        let range = range_like.get_range();
         if !range.is_valid() { return; }
         let len = buffer.len();
         for mut i in 0 .. len {
             assert!(len >= 1);
             i = len - 1 - i;
-            let buffer_range = buffer.get_mut(i).unwrap();
-            if range == *buffer_range { buffer.remove(i); return; }
+            let buffer_range = buffer.get_mut(i).unwrap().get_range();
+            if range == buffer_range { buffer.remove(i); return; }
             else if range.include(buffer_range) { buffer.remove(i); }
-            else if buffer_range.include(&range) {
+            else if buffer_range.include(range) {
                 assert!(buffer_range.is_valid());
-                let before = Range::new(buffer_range.get_real_start().unwrap(), range.get_real_start().unwrap());
-                let after = Range::new(range.get_real_end().unwrap(), buffer_range.get_real_end().unwrap());
+                let before = T::new(buffer_range.get_real_start().unwrap(), range.get_real_start().unwrap());
+                let after = T::new(range.get_real_end().unwrap(), buffer_range.get_real_end().unwrap());
                 if before.is_valid() { buffer.push(before);  }
                 if after.is_valid() { buffer.push(after);  }
                 buffer.remove(i);
                 return;
             }
         }
-        buffer.push(range);
+        buffer.push(range_like); // to push the proper struct and not only the range
     }
 
     pub fn underline(&mut self) {
-        Self::add_range_to_buffer(self.selection.get_range(), &mut self.underline_buffer);
+        Self::add_range_to_buffer(StyleRange::new_underline(self.selection.get_range()), &mut self.style_buffer);
         self.set_dirty(true);
     }
 
     pub fn bold(&mut self) {
-        Self::add_range_to_buffer(self.selection.get_range(), &mut self.bold_buffer);
+        Self::add_range_to_buffer(StyleRange::new_bold(self.selection.get_range()), &mut self.style_buffer);
         self.set_dirty(true);
     }
 
@@ -907,7 +910,10 @@ impl Editor {
         let mut encode = String::new();
         // Encode underline
         encode.push_str("#u: ");
-        let underline_ranges = self.underline_buffer
+        let bold_buffer: Vec<Range> = self.style_buffer.iter().filter(|sr| sr.bold == true).map(|sr| sr.range).collect();
+        let underline_buffer: Vec<Range> = self.style_buffer.iter().filter(|sr| sr.underline == true).map(|sr| sr.range).collect();
+
+        let underline_ranges = underline_buffer
             .iter()
             .map(|r| r.get_id() + ",")
             .filter(|id| id != "Invalid range")
@@ -916,7 +922,7 @@ impl Editor {
         encode.push_str("\n");
         // Encode bold
         encode.push_str("#b: ");
-        let bold_ranges = self.bold_buffer
+        let bold_ranges = bold_buffer
             .iter()
             .map(|r| r.get_id() + ",")
             .filter(|id| id != "Invalid range")
@@ -958,8 +964,7 @@ impl Editor {
     pub fn load_txt_file(&mut self, filepath: &str) {
         let valid_filepath = fs::canonicalize(filepath).expect("Invalid filepath");
         self.lines = vec![Line::new(Rc::clone(&self.font))];
-        self.underline_buffer = vec![];
-        self.bold_buffer = vec![];
+        self.style_buffer = vec![];
         self.selection.reset();
         self.filepath = Some(filepath.into());
         let file_content = fs::read_to_string(&valid_filepath).expect(&format!("Unable to load file to {}", filepath));
@@ -988,10 +993,15 @@ impl Editor {
         self.lines = vec![Line::new(Rc::clone(&self.font))];
         self.selection.reset();
         self.filepath = Some(filepath.into());
+        self.style_buffer = vec![];
         let file_content = fs::read_to_string(&valid_filepath).expect(&format!("Unable to load file to {}", filepath));
         let content_lines = file_content.split('\n').collect();
-        self.underline_buffer = Range::get_ranges_from_drn_line("#u:", &content_lines);
-        self.bold_buffer = Range::get_ranges_from_drn_line("#b:", &content_lines);
+        // Handle style
+        let underline_buffer = Range::get_ranges_from_drn_line("#u:", &content_lines);
+        let bold_buffer = Range::get_ranges_from_drn_line("#b:", &content_lines);
+        for range in underline_buffer { self.style_buffer.push(StyleRange::new_underline(range)) }
+        for range in bold_buffer { self.style_buffer.push(StyleRange::new_bold(range)) }
+        // Handle text
         for (i, line) in content_lines[2..].iter().enumerate() {
             if i < self.lines.len() {
                 self.lines.push(Line::new(Rc::clone(&self.font)));
@@ -1038,7 +1048,7 @@ impl Editor {
     pub fn update_text_layout(&mut self) {
         let mut difference = 0;
         for (i, line) in (&mut self.lines).iter_mut().enumerate() {
-            let diff = line.update_text_layout();
+            let diff = line.update_text_layout(&self.style_buffer);
             if i as u32 == self.cursor.y { difference = diff; }
         }
         self.font.borrow_mut().style_changed = false;
@@ -1087,7 +1097,8 @@ impl Editor {
         let line_camera = Camera::from_with_offset(&self.camera, Vector2::new(-line_offset, 0.));
 
         // draw underline
-        for range in &mut self.underline_buffer {
+        let mut underline_buffer: Vec<Range> = self.style_buffer.iter_mut().filter(|sr| sr.underline == true).map(|sr| sr.range).collect();
+        for range in &mut underline_buffer {
             assert!(range.is_valid());
             let line = &self.lines[range.start.unwrap().y as usize];
             let line_offset = line.alignment_offset;
