@@ -44,7 +44,7 @@ impl Font {
         let s2d_font = S2DFont::new(font_file_content.as_slice()).unwrap();
         Self {
             name: filename.to_string(),
-            size: DEFAULT_FONT_SIZE,
+            size: self.size,
             char_width: self.char_width,
             char_height: self.char_height,
             editor_size: self.editor_size,

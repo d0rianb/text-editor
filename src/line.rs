@@ -10,6 +10,7 @@ use crate::style_range::StyleRange;
 use crate::font::Font;
 use crate::range::Range;
 use crate::range_trait::RangeTrait;
+use crate::render_helper::draw_rectangle;
 
 const INITIAL_LINE_CAPACITY: usize = 1024;
 
@@ -147,7 +148,7 @@ impl Line {
                 let end = if style_range.get_real_end().unwrap().y == y as u32 { style_range.get_real_end().unwrap().x as usize } else { self.buffer.len() };
                 let ftb =
                     if style_range.bold { font.get_bold().layout_text(&font_formatted_string[start .. end],  TextOptions::default())}
-                    else { font.layout_text(&font_formatted_string,  TextOptions::default())};
+                    else { font.layout_text(&font_formatted_string[start .. end],  TextOptions::default())};
                 self.style_block.push(StyleBlock {
                     formatted_text_block: ftb,
                     offset: start as f32 * font.char_width,
@@ -161,7 +162,10 @@ impl Line {
 
     pub fn render(&self, x: f32, y: f32, graphics: &mut Graphics2D) {
         for sb in &self.style_block {
-            graphics.draw_text(Vector2::new(x + self.alignment_offset + sb.offset, y), sb.color, &sb.formatted_text_block);
+            let x = x + self.alignment_offset + sb.offset;
+            let ftb = &sb.formatted_text_block;
+            // draw_rectangle(x, y, ftb.width(), ftb.height(), Color::WHITE, graphics);
+            graphics.draw_text(Vector2::new(x, y), sb.color, ftb);
         }
     }
 }
