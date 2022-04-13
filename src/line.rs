@@ -9,8 +9,27 @@ use crate::style_range::StyleRange;
 
 use crate::font::Font;
 use crate::range::Range;
+use crate::range_trait::RangeTrait;
 
 const INITIAL_LINE_CAPACITY: usize = 1024;
+
+#[derive(Derivative)]
+#[derivative(Clone)]
+pub struct StyleBlock {
+    formatted_text_block: Rc<FormattedTextBlock>,
+    offset: f32,
+    color: Color,
+}
+
+impl StyleBlock {
+    pub fn new_unstyle(ftb: Rc<FormattedTextBlock>) -> Self {
+        Self {
+            formatted_text_block: ftb,
+            offset: 0.0,
+            color: Color::BLACK
+        }
+    }
+}
 
 #[derive(Derivative)]
 #[derivative(Debug, Clone)]
@@ -20,19 +39,19 @@ pub struct Line {
     pub alignment: TextAlignment,
     pub alignment_offset: f32,
     #[derivative(Debug = "ignore")]
-    pub formatted_text_block: Rc<FormattedTextBlock>,
+    pub style_block: Vec<StyleBlock>,
     previous_string: String,
 }
 
 impl Line {
     pub fn new(font: Rc<RefCell<Font>>) -> Self {
-        let formatted_text_block = font.borrow().layout_text("", TextOptions::default());
+        let style_block = vec![StyleBlock::new_unstyle(font.borrow().layout_text("", TextOptions::default()))];
         Line {
             buffer: Vec::with_capacity(INITIAL_LINE_CAPACITY),
             previous_string: String::new(),
             alignment: TextAlignment::Left,
             alignment_offset: 0.,
-            formatted_text_block,
+            style_block,
             font,
         }
     }
@@ -57,8 +76,8 @@ impl Line {
         let editor_width = self.font.borrow().editor_size.x;
         self.alignment_offset = match alignment {
             TextAlignment::Left => 0.,
-            TextAlignment::Center => (editor_width - self.formatted_text_block.width()) / 2.,
-            TextAlignment::Right => editor_width - self.formatted_text_block.width()
+            TextAlignment::Center => (editor_width - self.get_unstyled_ftb().width()) / 2.,
+            TextAlignment::Right => editor_width - self.get_unstyled_ftb().width()
         };
         self.alignment = alignment;
     }
@@ -95,9 +114,14 @@ impl Line {
         (start_index, end_index)
     }
 
-    pub fn update_text_layout(&mut self, style_buffer: &Vec<StyleRange>) -> i32 { // return the difference of length
+    pub fn get_unstyled_ftb(&self) -> &Rc<FormattedTextBlock> {
+        &self.style_block[0].formatted_text_block
+    }
+
+    /// return the difference of length between the raw buffer and the styled text
+    pub fn update_text_layout(&mut self, y: usize, style_buffer: &Vec<StyleRange>) -> i32 {
         let string = self.get_text();
-        let font = self.font.borrow();
+        let mut font = self.font.borrow();
         let font_formatted_string = font.format(&string);
         let mut diff: i32 = 0;
         if string != font_formatted_string {
@@ -109,15 +133,35 @@ impl Line {
                 .collect();
             diff -= self.buffer.len() as i32;
         }
-        if font_formatted_string != self.previous_string || font.style_changed{
-            // self.formatted_text_block = font.layout_text(&font_formatted_string, TextOptions::default().with_wrap_to_width(font.editor_size.x, self.alignment.clone()));
-            self.formatted_text_block = font.layout_text(&font_formatted_string, TextOptions::default());
+        if font_formatted_string != self.previous_string || font.style_changed {
+            // The first element is the all line without style
+            self.style_block = vec![StyleBlock::new_unstyle(font.layout_text(&font_formatted_string, TextOptions::default()))];
+            let line_range = Range::new((0, y as u32).into(), (self.buffer.len() as u32, y as u32).into());
+            let line_style_buffer: Vec<&StyleRange> = style_buffer
+                .iter()
+                .filter(|sr| line_range.include(&sr.range) || sr.range.include(&line_range))
+                .collect();
+
+            for style_range in line_style_buffer.iter() {
+                let start = if style_range.get_real_start().unwrap().y == y as u32 { style_range.get_real_start().unwrap().x as usize } else { 0 };
+                let end = if style_range.get_real_end().unwrap().y == y as u32 { style_range.get_real_end().unwrap().x as usize } else { self.buffer.len() };
+                let ftb =
+                    if style_range.bold { font.get_bold().layout_text(&font_formatted_string[start .. end],  TextOptions::default())}
+                    else { font.layout_text(&font_formatted_string,  TextOptions::default())};
+                self.style_block.push(StyleBlock {
+                    formatted_text_block: ftb,
+                    offset: start as f32 * font.char_width,
+                    color: style_range.color,
+                });
+            }
             self.previous_string = font_formatted_string;
         }
         diff
     }
 
     pub fn render(&self, x: f32, y: f32, graphics: &mut Graphics2D) {
-        graphics.draw_text(Vector2::new(x + self.alignment_offset, y), Color::BLACK, &self.formatted_text_block);
+        for sb in &self.style_block {
+            graphics.draw_text(Vector2::new(x + self.alignment_offset + sb.offset, y), sb.color, &sb.formatted_text_block);
+        }
     }
 }

@@ -243,6 +243,7 @@ impl Editable for Editor {
             'S' => self.toggle_save_popup(),
             'o' => self.load(),
             'u' => self.underline(),
+            'b' => self.bold(),
             'c' => self.copy(),
             'v' => self.paste(),
             'x' => { self.copy(); self.delete_selection() },
@@ -260,6 +261,7 @@ impl Editable for Editor {
             'r' => self.find_next(),
             'p' => self.print_dir(),
             'P' => self.toggle_ai_contextual_menu(),
+            'k' => self.colorize(Color::GREEN),
             _ => {}
         }
     }
@@ -666,6 +668,13 @@ impl Editor {
 
     pub fn bold(&mut self) {
         Self::add_range_to_buffer(StyleRange::new_bold(self.selection.get_range()), &mut self.style_buffer);
+        self.font.borrow_mut().style_changed = true;
+        self.set_dirty(true);
+    }
+
+    pub fn colorize(&mut self, color: Color) {
+        Self::add_range_to_buffer(StyleRange::new_colored(self.selection.get_range(), color), &mut self.style_buffer);
+        self.font.borrow_mut().style_changed = true;
         self.set_dirty(true);
     }
 
@@ -1048,7 +1057,7 @@ impl Editor {
     pub fn update_text_layout(&mut self) {
         let mut difference = 0;
         for (i, line) in (&mut self.lines).iter_mut().enumerate() {
-            let diff = line.update_text_layout(&self.style_buffer);
+            let diff = line.update_text_layout(i, &self.style_buffer);
             if i as u32 == self.cursor.y { difference = diff; }
         }
         self.font.borrow_mut().style_changed = false;
@@ -1085,8 +1094,8 @@ impl Editor {
                 - self.camera.computed_y() + previous_line_height * (i as f32),
                 graphics,
             );
-            previous_line_height = if line.formatted_text_block.height() > 0. {
-                line.formatted_text_block.height()
+            previous_line_height = if line.get_unstyled_ftb().height() > 0. {
+                line.get_unstyled_ftb().height()
             } else {
                 line.font.borrow().char_height
             };

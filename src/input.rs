@@ -129,7 +129,7 @@ impl Input {
         editor.set_event_sender(Some(es));
         editor.camera.safe_zone_size = 30.;
         editor.should_edit_file = false;
-        let blank_text_layout = editor.lines[0].formatted_text_block.clone();
+        let blank_text_layout = editor.lines[0].get_unstyled_ftb().clone();
         Self {
             editor,
             is_focus: false,
@@ -294,7 +294,7 @@ impl Input {
     pub fn update_text_layout(&mut self) {
         self.editor.update_text_layout();
         self.suggestion_test_layout = self.editor.font.borrow().layout_text(&self.suggestion, TextOptions::default());
-        let width_left = self.width - self.editor.lines.first().unwrap().formatted_text_block.width() - self.suggestion_test_layout.width();
+        let width_left = self.width - self.editor.lines.first().unwrap().get_unstyled_ftb().width() - self.suggestion_test_layout.width();
         const WIDTH_OFFSET: f32 = 2.;
         if width_left < WIDTH_OFFSET {
             self.set_width((self.width + WIDTH_OFFSET - width_left).clamp(MIN_INPUT_WIDTH, MAX_INPUT_WIDTH));
@@ -326,7 +326,7 @@ impl Input {
         ));
         line.render(x - self.editor.camera.computed_x(), y - self.editor.camera.computed_y(), graphics);
         graphics.draw_text(
-            Vector2::new(x - self.editor.camera.computed_x() + line.formatted_text_block.width(), y - self.editor.camera.computed_y()),
+            Vector2::new(x - self.editor.camera.computed_x() + line.get_unstyled_ftb().width(), y - self.editor.camera.computed_y()),
             Color::GRAY,
             &self.suggestion_test_layout
         );

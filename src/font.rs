@@ -37,6 +37,22 @@ impl Font {
         }
     }
 
+    pub fn get_bold(&self) -> Self {
+        // TODO: rework
+        let filename = self.name.replace("Regular.ttf", "Bold.ttf");
+        let font_file_content = fs::read("./resources/font/CourierBold.ttf").expect("Unable to find bold font");
+        let s2d_font = S2DFont::new(font_file_content.as_slice()).unwrap();
+        Self {
+            name: filename.to_string(),
+            size: DEFAULT_FONT_SIZE,
+            char_width: self.char_width,
+            char_height: self.char_height,
+            editor_size: self.editor_size,
+            style_changed: false,
+            s2d_font,
+        }
+    }
+
     pub fn change_font_size(&mut self, amount: i32) {
         self.size = (self.size as i32 + amount).clamp(MIN_FONT_SIZE as i32, MAX_FONT_SIZE as i32) as u32;
         let font_layout = self.s2d_font.layout_text("a", 2.0 * self.size as f32, TextOptions::default());

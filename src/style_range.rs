@@ -35,7 +35,7 @@ impl Debug for StyleRange {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let start_text = if let Some(start) = self.range.start { start.x.to_string() + "," + &start.y.to_string() } else { "None".to_owned() } ;
         let end_text = if let Some(end) = self.range.end { end.x.to_string() + "," + &end.y.to_string() } else { "None".to_owned() } ;
-        write!(f, "Range : {} - {}", start_text, end_text)
+        write!(f, "Range : {} - {} \nbold: {}\nunderline: {}\nstrikethrough: {}\ncolor: {:?}", start_text, end_text, self.bold, self.underline, self.strikethrough, self.color)
     }
 }
 
